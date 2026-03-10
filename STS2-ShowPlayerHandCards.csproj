@@ -1,0 +1,37 @@
+<Project Sdk="Godot.NET.Sdk/4.5.1">
+    <PropertyGroup>
+        <RootNamespace>STS2ShowPlayerHandCards</RootNamespace>
+        <TargetFramework>net9.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <ImplicitUsings>true</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <EnableDynamicLoading>true</EnableDynamicLoading>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <Sts2Dir>E:\SteamLibrary\steamapps\common\Slay the Spire 2</Sts2Dir>
+        <Sts2DataDir>$(Sts2Dir)\data_sts2_windows_x86_64</Sts2DataDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Reference Include="$(Sts2DataDir)\sts2.dll">
+            <Private>False</Private>
+        </Reference>
+        <Reference Include="$(Sts2DataDir)\0Harmony.dll">
+            <Private>False</Private>
+        </Reference>
+        <Reference Include="$(Sts2DataDir)\Steamworks.NET.dll">
+            <Private>False</Private>
+        </Reference>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="mod_manifest.json"/>
+    </ItemGroup>
+
+    <Target Name="Copy Mod" AfterTargets="PostBuildEvent">
+        <Message Text="Copying mod to Slay the Spire 2 mods folder..." Importance="high"/>
+        <MakeDir Directories="$(Sts2Dir)\mods\"/>
+        <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(Sts2Dir)\mods\$(MSBuildProjectName)\"/>
+    </Target>
+</Project>
