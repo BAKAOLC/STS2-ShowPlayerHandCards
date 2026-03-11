@@ -81,6 +81,8 @@ namespace STS2ShowPlayerHandCards.Utils
 
             try
             {
+                EnsureDirectoryExists(filePath);
+
                 using var file = FileAccess.Open(filePath, FileAccess.ModeFlags.Write);
                 if (file == null)
                 {
@@ -110,6 +112,23 @@ namespace STS2ShowPlayerHandCards.Utils
                     ErrorMessage = $"Unexpected error: {ex.Message}",
                 };
             }
+        }
+
+        /// <summary>
+        ///     Ensures the directory for a file path exists.
+        /// </summary>
+        private static void EnsureDirectoryExists(string filePath)
+        {
+            var lastSlash = filePath.LastIndexOf('/');
+            if (lastSlash <= 0) return;
+
+            var directory = filePath[..lastSlash];
+            if (string.IsNullOrEmpty(directory)) return;
+            if (DirAccess.DirExistsAbsolute(directory)) return;
+
+            var error = DirAccess.MakeDirRecursiveAbsolute(directory);
+            if (error != Error.Ok)
+                Main.Logger.Warn($"Failed to create directory '{directory}' (Error: {error})");
         }
 
         /// <summary>

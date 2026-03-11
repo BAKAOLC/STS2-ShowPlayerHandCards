@@ -2,6 +2,8 @@ using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Modding;
 using STS2ShowPlayerHandCards.Patches;
 using STS2ShowPlayerHandCards.Patching.Core;
+using STS2ShowPlayerHandCards.Utils;
+using ModSettings = STS2ShowPlayerHandCards.Data.ModSettings;
 
 namespace STS2ShowPlayerHandCards
 {
@@ -36,6 +38,10 @@ namespace STS2ShowPlayerHandCards
                 IsModActive = true;
                 Logger.Info("Mod initialization complete - Mod is now ACTIVE");
                 LogPatcherStatus();
+
+                ModSettings.Load();
+                InputHandler.EnsureExists();
+                Logger.Info($"Press '{InputHandler.CurrentKey}' to toggle hand card display visibility");
             }
             catch (Exception ex)
             {

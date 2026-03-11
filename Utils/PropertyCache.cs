@@ -8,7 +8,7 @@ namespace STS2ShowPlayerHandCards.Utils
     /// </summary>
     internal static class PropertyCache
     {
-        private static readonly Dictionary<Type, PropertyInfo[]> Cache = new();
+        private static readonly Dictionary<Type, PropertyInfo[]> Cache = [];
         private static readonly Lock Lock = new();
 
         public static PropertyInfo[] GetProperties(Type type)

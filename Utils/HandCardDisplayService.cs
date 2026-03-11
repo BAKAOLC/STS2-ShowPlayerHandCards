@@ -27,6 +27,34 @@ namespace STS2ShowPlayerHandCards.Utils
         private static readonly Vector2 ScaledSize = NCard.defaultSize * MiniCardScale;
         private static readonly Dictionary<NMultiplayerPlayerState, CardDisplayContainer> Containers = [];
         private static bool _subscribed;
+        private static bool _hidden;
+
+        /// <summary>
+        ///     Gets or sets whether the hand card display is currently hidden.
+        /// </summary>
+        public static bool IsHidden
+        {
+            get => _hidden;
+            set
+            {
+                if (_hidden == value) return;
+                _hidden = value;
+                UpdateVisibility();
+            }
+        }
+
+        /// <summary>
+        ///     Toggles the visibility of the hand card display.
+        /// </summary>
+        public static void ToggleVisibility()
+        {
+            IsHidden = !IsHidden;
+        }
+
+        private static void UpdateVisibility()
+        {
+            foreach (var container in Containers.Values) container.SetHidden(_hidden);
+        }
 
         public static void EnsureSubscribed()
         {
@@ -132,6 +160,9 @@ namespace STS2ShowPlayerHandCards.Utils
         {
             private readonly List<MiniCard> _cards = [];
             private readonly NMultiplayerPlayerState? _playerState;
+
+            private bool _isHidden;
+            private float _lastWidth;
             private Control? _spacer;
 
             public CardDisplayContainer(NMultiplayerPlayerState playerState)
@@ -162,6 +193,8 @@ namespace STS2ShowPlayerHandCards.Utils
 
                 _playerState.AddChild(this);
                 Resized += OnResized;
+
+                SetHidden(_hidden);
             }
 
             public override void _Process(double delta)
@@ -172,8 +205,17 @@ namespace STS2ShowPlayerHandCards.Utils
 
             private void OnResized()
             {
-                if (_spacer != null)
+                _lastWidth = Size.X;
+                if (_spacer != null && !_isHidden)
                     _spacer.CustomMinimumSize = new(Size.X, 0);
+            }
+
+            public void SetHidden(bool hidden)
+            {
+                _isHidden = hidden;
+                Visible = !hidden;
+                if (_spacer != null)
+                    _spacer.CustomMinimumSize = hidden ? Vector2.Zero : new(_lastWidth, 0);
             }
 
             public void RefreshCards(IReadOnlyList<CardModel> cards)
