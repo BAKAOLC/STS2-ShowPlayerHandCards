@@ -3,5 +3,5 @@
   "name": "Show Player Hand Cards",
   "author": "OLC",
   "description": "Show teammate hand cards next to the multiplayer player list in real-time, with hover to view full card details",
-  "version": "0.0.1"
+  "version": "0.1.0"
 }

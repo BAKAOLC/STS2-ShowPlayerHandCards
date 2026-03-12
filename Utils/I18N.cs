@@ -7,6 +7,7 @@ namespace STS2ShowPlayerHandCards.Utils
 {
     public class I18N : IDisposable
     {
+        private readonly string[] _fsFolders;
         private readonly string _instanceName;
         private readonly string[] _pckFolders;
         private readonly string[] _resourceFolders;
@@ -15,13 +16,17 @@ namespace STS2ShowPlayerHandCards.Utils
         private bool _subscribed;
         private Dictionary<string, string> _translations = new(StringComparer.OrdinalIgnoreCase);
 
-        public I18N(string? instanceName = null, string[]? resourceFolders = null, string[]? pckFolders = null)
+        public I18N(string? instanceName = null,
+            string[]? fsFolders = null,
+            string[]? resourceFolders = null,
+            string[]? pckFolders = null)
         {
             _instanceName = instanceName ?? "I18N";
             _resourceFolders = resourceFolders?.Where(f => !string.IsNullOrWhiteSpace(f)).ToArray() ?? [];
+            _fsFolders = fsFolders?.Where(f => !string.IsNullOrWhiteSpace(f)).ToArray() ?? [];
             _pckFolders = pckFolders?.Where(f => !string.IsNullOrWhiteSpace(f)).ToArray() ?? [];
 
-            if (_resourceFolders.Length == 0 && _pckFolders.Length == 0)
+            if (_resourceFolders.Length == 0 && _fsFolders.Length == 0 && _pckFolders.Length == 0)
                 Main.Logger.Warn($"[{_instanceName}] Initialized with no translation sources");
             else
                 Initialize();
@@ -141,37 +146,50 @@ namespace STS2ShowPlayerHandCards.Utils
 
         private Dictionary<string, string> LoadTranslations(string language)
         {
-            var candidates = GetLanguageCandidates(language);
-            var enumerable = candidates as string[] ?? candidates.ToArray();
-            foreach (var candidate in enumerable)
-            {
-                // Try embedded resources first
-                var resourceSpan = _resourceFolders.AsSpan();
-                foreach (var res in resourceSpan)
-                {
-                    var dictionary = TryLoadEmbedded(res, candidate);
-                    if (dictionary is not { Count: > 0 }) continue;
-                    Main.Logger.Info(
-                        $"[{_instanceName}] Loaded translations from embedded resource: {res}.{candidate}.json ({dictionary.Count} entries)");
-                    return dictionary;
-                }
+            var merged = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var sourceCount = 0;
 
-                // Try PCK files as fallback
-                var pckSpan = _pckFolders.AsSpan();
-                foreach (var res in pckSpan)
-                {
-                    var path = $"{res}/{candidate}.json";
-                    var dictionary = TryLoadFromPck(path);
-                    if (dictionary is not { Count: > 0 }) continue;
-                    Main.Logger.Info(
-                        $"[{_instanceName}] Loaded translations from PCK file: {path} ({dictionary.Count} entries)");
-                    return dictionary;
-                }
+            foreach (var folder in _fsFolders)
+            {
+                var path = $"{folder}/{language}.json";
+                var dictionary = TryLoadFromFileSystem(path);
+                if (dictionary is not { Count: > 0 }) continue;
+
+                var newKeys = dictionary.Count(kvp => merged.TryAdd(kvp.Key, kvp.Value));
+                sourceCount++;
+                Main.Logger.Info(
+                    $"[{_instanceName}] Merged from FS: {path} ({dictionary.Count} entries, {newKeys} new)");
             }
 
-            Main.Logger.Warn(
-                $"[{_instanceName}] No translation files found for language '{language}' (tried {string.Join(", ", enumerable)})");
-            return new(StringComparer.OrdinalIgnoreCase);
+            foreach (var res in _resourceFolders)
+            {
+                var dictionary = TryLoadEmbedded(res, language);
+                if (dictionary is not { Count: > 0 }) continue;
+
+                var newKeys = dictionary.Count(kvp => merged.TryAdd(kvp.Key, kvp.Value));
+                sourceCount++;
+                Main.Logger.Info(
+                    $"[{_instanceName}] Merged from embedded: {res}.{language}.json ({dictionary.Count} entries, {newKeys} new)");
+            }
+
+            foreach (var res in _pckFolders)
+            {
+                var path = $"{res}/{language}.json";
+                var dictionary = TryLoadFromPck(path);
+                if (dictionary is not { Count: > 0 }) continue;
+
+                var newKeys = dictionary.Count(kvp => merged.TryAdd(kvp.Key, kvp.Value));
+                sourceCount++;
+                Main.Logger.Info(
+                    $"[{_instanceName}] Merged from PCK: {path} ({dictionary.Count} entries, {newKeys} new)");
+            }
+
+            if (merged.Count == 0)
+                Main.Logger.Warn($"[{_instanceName}] No translations found for '{language}'");
+            else
+                Main.Logger.Info($"[{_instanceName}] Total: {merged.Count} entries from {sourceCount} source(s)");
+
+            return merged;
         }
 
         private Dictionary<string, string>? TryLoadEmbedded(string resourceFolder, string language)
@@ -216,6 +234,19 @@ namespace STS2ShowPlayerHandCards.Utils
             return result.Data;
         }
 
+        private Dictionary<string, string>? TryLoadFromFileSystem(string path)
+        {
+            if (!FileOperations.FileExists(path))
+            {
+                Main.Logger.Debug($"[{_instanceName}] FS file not found: '{path}'");
+                return null;
+            }
+
+            var result = FileOperations.ReadJson<Dictionary<string, string>>(path, null, _instanceName);
+            if (!result.Success || result.Data == null) return null;
+            return result.Data;
+        }
+
         private static string ResolveLanguage()
         {
             string? language = null;
@@ -244,41 +275,25 @@ namespace STS2ShowPlayerHandCards.Utils
             return NormalizeLanguageCode(language);
         }
 
-        private static IEnumerable<string> GetLanguageCandidates(string language)
-        {
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            // Try exact match first
-            if (seen.Add(language)) yield return language;
-
-            // Try base language (e.g., "en" from "en_US")
-            var separatorIndex = language.IndexOf('_');
-            if (separatorIndex > 0)
-            {
-                var baseLanguage = language[..separatorIndex];
-                if (seen.Add(baseLanguage)) yield return baseLanguage;
-            }
-
-            // Special handling for Chinese variants
-            if (language.StartsWith("zh", StringComparison.OrdinalIgnoreCase) && seen.Add("zhs"))
-                yield return "zhs";
-
-            // Fallback to English variants
-            if (language.StartsWith("en", StringComparison.OrdinalIgnoreCase) && seen.Add("en"))
-                yield return "en";
-
-            // Final fallback to English
-            if (seen.Add("en")) yield return "en";
-        }
-
         private static string NormalizeLanguageCode(string? language)
         {
-            if (string.IsNullOrWhiteSpace(language)) return "en";
+            if (string.IsNullOrWhiteSpace(language)) return "eng";
             var text = language.Trim().Replace('-', '_').ToLowerInvariant();
             return text switch
             {
                 "zh_cn" or "zh_hans" or "zh_sg" or "zh" => "zhs",
-                "en_us" or "en_gb" => "en",
+                "en_us" or "en_gb" or "en" or "eng" => "eng",
+                "ja" or "ja_jp" or "jpn" => "jpn",
+                "ko" or "ko_kr" or "kor" => "kor",
+                "de" or "de_de" or "deu" => "deu",
+                "es" or "es_es" or "esp" => "esp",
+                "fr" or "fr_fr" or "fra" => "fra",
+                "it" or "it_it" or "ita" => "ita",
+                "pl" or "pl_pl" or "pol" => "pol",
+                "pt" or "pt_br" or "ptb" => "ptb",
+                "ru" or "ru_ru" or "rus" => "rus",
+                "th" or "th_th" or "tha" => "tha",
+                "tr" or "tr_tr" or "tur" => "tur",
                 _ => text,
             };
         }

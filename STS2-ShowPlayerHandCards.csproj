@@ -6,6 +6,7 @@
         <ImplicitUsings>true</ImplicitUsings>
         <Nullable>enable</Nullable>
         <EnableDynamicLoading>true</EnableDynamicLoading>
+        <NoWarn>CS0436</NoWarn>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -14,18 +15,21 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Reference Include="$(Sts2DataDir)\sts2.dll">
-            <Private>False</Private>
-        </Reference>
-        <Reference Include="$(Sts2DataDir)\0Harmony.dll">
-            <Private>False</Private>
-        </Reference>
-        <Reference Include="$(Sts2DataDir)\Steamworks.NET.dll">
-            <Private>False</Private>
-        </Reference>
+        <PackageReference Include="Krafs.Publicizer" Version="2.3.0" PrivateAssets="all"/>
     </ItemGroup>
 
     <ItemGroup>
+        <Publicize Include="sts2" IncludeCompilerGeneratedMembers="false" IncludeVirtualMembers="false"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Reference Include="sts2" HintPath="$(Sts2DataDir)\sts2.dll" Private="False"/>
+        <Reference Include="0Harmony" HintPath="$(Sts2DataDir)\0Harmony.dll" Private="False"/>
+        <Reference Include="Steamworks.NET" HintPath="$(Sts2DataDir)\Steamworks.NET.dll" Private="False"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="Data\ModDataStore.cs.uid"/>
         <Content Include="mod_manifest.json"/>
     </ItemGroup>
 
@@ -35,6 +39,9 @@
         <None Remove="sts-2-source\**"/>
         <Content Remove="sts-2-source\**"/>
         <EmbeddedResource Remove="sts-2-source\**"/>
+    </ItemGroup>
+    <ItemGroup>
+        <Folder Include="Data\Migration\"/>
     </ItemGroup>
 
     <Target Name="Copy Mod" AfterTargets="PostBuildEvent">

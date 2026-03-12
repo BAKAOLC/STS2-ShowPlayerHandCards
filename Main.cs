@@ -1,9 +1,13 @@
+using Godot;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Modding;
+using STS2ShowPlayerHandCards.Data;
 using STS2ShowPlayerHandCards.Patches;
 using STS2ShowPlayerHandCards.Patching.Core;
 using STS2ShowPlayerHandCards.Utils;
-using ModSettings = STS2ShowPlayerHandCards.Data.ModSettings;
+using STS2ShowPlayerHandCards.Utils.Persistence.Patches;
+using Logger = MegaCrit.Sts2.Core.Logging.Logger;
+using ModSettings = STS2ShowPlayerHandCards.Data.Models.ModSettings;
 
 namespace STS2ShowPlayerHandCards
 {
@@ -23,6 +27,11 @@ namespace STS2ShowPlayerHandCards
 
             try
             {
+                InitializeData();
+
+                var frameworkPatcher = GetOrCreatePatcher("framework", "Framework-level patches");
+                RegisterFrameworkPatches(frameworkPatcher);
+
                 var mainPatcher = GetOrCreatePatcher("main", "Main patches");
                 RegisterMainPatches(mainPatcher);
                 var allSuccess = ApplyAllPatchers();
@@ -39,7 +48,6 @@ namespace STS2ShowPlayerHandCards
                 Logger.Info("Mod initialization complete - Mod is now ACTIVE");
                 LogPatcherStatus();
 
-                ModSettings.Load();
                 InputHandler.EnsureExists();
                 Logger.Info($"Press '{InputHandler.CurrentKey}' to toggle hand card display visibility");
             }
@@ -104,9 +112,31 @@ namespace STS2ShowPlayerHandCards
             Logger.Info("======================");
         }
 
+        private static void RegisterFrameworkPatches(ModPatcher patcher)
+        {
+            patcher.RegisterPatch<ProfileDeletePatch>();
+        }
+
         private static void RegisterMainPatches(ModPatcher patcher)
         {
             patcher.RegisterPatch<CombatSetupPatch>();
+        }
+
+        private static void InitializeData()
+        {
+            ModDataStore.Instance.Initialize();
+
+            var settings = ModDataStore.Instance.Get<ModSettings>(ModDataStore.SettingsKey);
+            if (!Enum.TryParse<Key>(settings.ToggleKey, true, out var toggleKey))
+            {
+                toggleKey = InputHandler.DefaultToggleKey;
+                ModDataStore.Instance.Modify<ModSettings>(ModDataStore.SettingsKey,
+                    s => s.ToggleKey = toggleKey.ToString());
+                ModDataStore.Instance.Save(ModDataStore.SettingsKey);
+                Logger.Warn($"Invalid toggle key in settings: '{settings.ToggleKey}', fallback to '{toggleKey}'.");
+            }
+
+            InputHandler.CurrentKey = toggleKey;
         }
     }
 }

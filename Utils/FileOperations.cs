@@ -6,9 +6,13 @@ namespace STS2ShowPlayerHandCards.Utils
 {
     /// <summary>
     ///     Unified file operations wrapper for Godot's FileAccess with consistent error handling and logging.
+    ///     Supports atomic writes with backup rotation (mirrors STS2's GodotFileIo pattern).
     /// </summary>
     public static class FileOperations
     {
+        private const string TempSuffix = ".tmp";
+        private const string BackupSuffix = ".backup";
+
         /// <summary>
         ///     Reads text content from a file with detailed error handling.
         /// </summary>
@@ -73,12 +77,66 @@ namespace STS2ShowPlayerHandCards.Utils
         }
 
         /// <summary>
-        ///     Writes text content to a file with detailed error handling.
+        ///     Writes text content to a file with atomic write pattern:
+        ///     1. Rotate existing file to .backup
+        ///     2. Write to .tmp file
+        ///     3. Rename .tmp to target path
         /// </summary>
-        public static WriteResult WriteText(string filePath, string content, string? logContext = null)
+        public static WriteResult WriteText(string filePath, string content, string? logContext = null,
+            bool atomic = true)
         {
             var context = logContext ?? "FileOperations";
 
+            if (!atomic)
+                return WriteTextDirect(filePath, content, context);
+
+            try
+            {
+                EnsureDirectoryExists(filePath);
+
+                var tempPath = filePath + TempSuffix;
+                var backupPath = filePath + BackupSuffix;
+
+                RotateBackup(filePath, backupPath, context);
+
+                var writeResult = WriteTextDirect(tempPath, content, context);
+                if (!writeResult.Success)
+                {
+                    RestoreFromBackup(filePath, backupPath, context);
+                    return writeResult;
+                }
+
+                var renameResult = RenameFile(tempPath, filePath, context);
+                if (!renameResult.Success)
+                {
+                    DeleteFileSilent(tempPath);
+                    RestoreFromBackup(filePath, backupPath, context);
+                    return new()
+                    {
+                        Success = false,
+                        ErrorMessage = $"Failed to rename temp file: {renameResult.ErrorMessage}",
+                    };
+                }
+
+                Main.Logger.Debug($"[{context}] Atomic write completed for '{filePath}'");
+                return new() { Success = true };
+            }
+            catch (Exception ex)
+            {
+                Main.Logger.Error($"[{context}] Unexpected error during atomic write to '{filePath}': {ex.Message}");
+                return new()
+                {
+                    Success = false,
+                    ErrorMessage = $"Unexpected error: {ex.Message}",
+                };
+            }
+        }
+
+        /// <summary>
+        ///     Direct write without atomic pattern (internal use)
+        /// </summary>
+        private static WriteResult WriteTextDirect(string filePath, string content, string context)
+        {
             try
             {
                 EnsureDirectoryExists(filePath);
@@ -98,10 +156,7 @@ namespace STS2ShowPlayerHandCards.Utils
 
                 file.StoreString(content);
                 Main.Logger.Debug($"[{context}] Successfully wrote to file '{filePath}' ({content.Length} characters)");
-                return new()
-                {
-                    Success = true,
-                };
+                return new() { Success = true };
             }
             catch (Exception ex)
             {
@@ -112,6 +167,130 @@ namespace STS2ShowPlayerHandCards.Utils
                     ErrorMessage = $"Unexpected error: {ex.Message}",
                 };
             }
+        }
+
+        /// <summary>
+        ///     Rotate backup: delete old .backup, rename current file to .backup
+        /// </summary>
+        private static void RotateBackup(string filePath, string backupPath, string context)
+        {
+            try
+            {
+                if (FileAccess.FileExists(backupPath))
+                    DeleteFileSilent(backupPath);
+
+                if (!FileAccess.FileExists(filePath)) return;
+                var result = RenameFile(filePath, backupPath, context);
+                if (result.Success)
+                    Main.Logger.Debug($"[{context}] Rotated '{filePath}' to backup");
+            }
+            catch (Exception ex)
+            {
+                Main.Logger.Warn($"[{context}] Failed to rotate backup: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        ///     Restore file from backup
+        /// </summary>
+        private static void RestoreFromBackup(string filePath, string backupPath, string context)
+        {
+            try
+            {
+                if (!FileAccess.FileExists(backupPath)) return;
+
+                var result = RenameFile(backupPath, filePath, context);
+                if (result.Success)
+                    Main.Logger.Info($"[{context}] Restored '{filePath}' from backup");
+            }
+            catch (Exception ex)
+            {
+                Main.Logger.Error($"[{context}] Failed to restore from backup: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        ///     Rename a file
+        /// </summary>
+        public static WriteResult RenameFile(string fromPath, string toPath, string? logContext = null)
+        {
+            try
+            {
+                var dir = GetDirectoryFromPath(fromPath);
+                using var dirAccess = DirAccess.Open(dir);
+
+                if (dirAccess == null)
+                    return new()
+                    {
+                        Success = false,
+                        ErrorMessage = $"Failed to access directory '{dir}'",
+                    };
+
+                var error = dirAccess.Rename(fromPath, toPath);
+                if (error != Error.Ok)
+                    return new()
+                    {
+                        Success = false,
+                        ErrorCode = error,
+                        ErrorMessage = $"Rename failed (Error: {error})",
+                    };
+
+                return new() { Success = true };
+            }
+            catch (Exception ex)
+            {
+                return new()
+                {
+                    Success = false,
+                    ErrorMessage = $"Unexpected error: {ex.Message}",
+                };
+            }
+        }
+
+        /// <summary>
+        ///     Try to load from backup file if main file fails
+        /// </summary>
+        public static ReadResult ReadTextWithBackupFallback(string filePath, string? logContext = null)
+        {
+            var context = logContext ?? "FileOperations";
+            var result = ReadText(filePath, context);
+
+            if (result.Success)
+                return result;
+
+            var backupPath = filePath + BackupSuffix;
+            if (!FileAccess.FileExists(backupPath))
+                return result;
+
+            Main.Logger.Info($"[{context}] Attempting to load from backup '{backupPath}'");
+            var backupResult = ReadText(backupPath, context);
+
+            if (!backupResult.Success) return backupResult;
+            backupResult = backupResult with { LoadedFromBackup = true };
+            Main.Logger.Info($"[{context}] Successfully loaded from backup");
+
+            return backupResult;
+        }
+
+        private static void DeleteFileSilent(string filePath)
+        {
+            try
+            {
+                if (!FileAccess.FileExists(filePath)) return;
+                var dir = GetDirectoryFromPath(filePath);
+                using var dirAccess = DirAccess.Open(dir);
+                dirAccess?.Remove(filePath);
+            }
+            catch
+            {
+                // Ignore errors in silent delete
+            }
+        }
+
+        private static string GetDirectoryFromPath(string filePath)
+        {
+            var lastSlash = filePath.LastIndexOf('/');
+            return lastSlash > 0 ? filePath[..lastSlash] : "user://";
         }
 
         /// <summary>
@@ -285,14 +464,86 @@ namespace STS2ShowPlayerHandCards.Utils
         }
 
         /// <summary>
+        ///     Recursively deletes a directory and all its contents.
+        /// </summary>
+        public static WriteResult DeleteDirectoryRecursive(string directoryPath, string? logContext = null)
+        {
+            var context = logContext ?? "FileOperations";
+
+            try
+            {
+                if (!DirAccess.DirExistsAbsolute(directoryPath))
+                {
+                    Main.Logger.Debug($"[{context}] Directory '{directoryPath}' does not exist, nothing to delete");
+                    return new() { Success = true };
+                }
+
+                using var dirAccess = DirAccess.Open(directoryPath);
+                if (dirAccess == null)
+                {
+                    Main.Logger.Error($"[{context}] Failed to open directory '{directoryPath}'");
+                    return new()
+                    {
+                        Success = false,
+                        ErrorMessage = $"Failed to open directory '{directoryPath}'",
+                    };
+                }
+
+                foreach (var file in dirAccess.GetFiles())
+                {
+                    var filePath = $"{directoryPath}/{file}";
+                    var result = DeleteFile(filePath, context);
+                    if (!result.Success)
+                        Main.Logger.Warn($"[{context}] Failed to delete file '{filePath}': {result.ErrorMessage}");
+                }
+
+                foreach (var subDir in dirAccess.GetDirectories())
+                {
+                    var subDirPath = $"{directoryPath}/{subDir}";
+                    DeleteDirectoryRecursive(subDirPath, context);
+                }
+
+                var parentPath = GetDirectoryFromPath(directoryPath);
+                using var parentAccess = DirAccess.Open(parentPath);
+                if (parentAccess != null)
+                {
+                    var error = parentAccess.Remove(directoryPath);
+                    if (error != Error.Ok)
+                    {
+                        Main.Logger.Warn($"[{context}] Failed to remove directory '{directoryPath}' (Error: {error})");
+                        return new()
+                        {
+                            Success = false,
+                            ErrorCode = error,
+                            ErrorMessage = $"Failed to remove directory (Error: {error})",
+                        };
+                    }
+                }
+
+                Main.Logger.Info($"[{context}] Successfully deleted directory '{directoryPath}'");
+                return new() { Success = true };
+            }
+            catch (Exception ex)
+            {
+                Main.Logger.Error($"[{context}] Unexpected error deleting directory '{directoryPath}': {ex.Message}");
+                return new()
+                {
+                    Success = false,
+                    ErrorMessage = $"Unexpected error: {ex.Message}",
+                };
+            }
+        }
+
+        /// <summary>
         ///     Result of a file read operation.
         /// </summary>
-        public class ReadResult
+        public record ReadResult
         {
             public bool Success { get; init; }
             public string? Content { get; init; }
             public Error? ErrorCode { get; init; }
             public string? ErrorMessage { get; init; }
+            public bool LoadedFromBackup { get; init; }
         }
 
         /// <summary>
