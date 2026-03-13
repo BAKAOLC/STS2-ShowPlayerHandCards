@@ -43,7 +43,8 @@ namespace STS2ShowPlayerHandCards.Utils.Persistence
             var oldProfileId = CurrentProfileId;
             CurrentProfileId = newProfileId;
 
-            PersistenceLog.Info($"Profile changed from {oldProfileId} to {newProfileId}");
+            if (oldProfileId >= 0)
+                PersistenceLog.Info($"Profile changed from {oldProfileId} to {newProfileId}");
             ProfileChanged?.Invoke(oldProfileId, newProfileId);
         }
 

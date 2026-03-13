@@ -5,7 +5,9 @@ namespace STS2ShowPlayerHandCards.Data.Models
 {
     public class ModSettings
     {
-        [JsonPropertyName("data_version")] public int DataVersion { get; set; } = 1;
+        public const int CurrentDataVersion = 1;
+
+        [JsonPropertyName("data_version")] public int DataVersion { get; set; } = CurrentDataVersion;
 
         /// <summary>
         ///     The key used to toggle hand card visibility.

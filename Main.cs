@@ -16,6 +16,7 @@ namespace STS2ShowPlayerHandCards
     {
         public static readonly Logger Logger = new(Const.ModId, LogType.Generic);
         private static readonly Dictionary<string, ModPatcher> Patchers = [];
+        private static bool _profileServicesInitialized;
 
         public static bool IsModActive { get; private set; }
 
@@ -27,8 +28,6 @@ namespace STS2ShowPlayerHandCards
 
             try
             {
-                InitializeData();
-
                 var frameworkPatcher = GetOrCreatePatcher("framework", "Framework-level patches");
                 RegisterFrameworkPatches(frameworkPatcher);
 
@@ -40,16 +39,20 @@ namespace STS2ShowPlayerHandCards
                 {
                     Logger.Error("Mod initialization failed: Critical patch(es) failed to apply");
                     Logger.Error("Mod is in a failed state and will not be active. Please check the logs for details.");
+                    LogPatcherStatus();
                     IsModActive = false;
                     return;
                 }
 
-                IsModActive = true;
-                Logger.Info("Mod initialization complete - Mod is now ACTIVE");
                 LogPatcherStatus();
 
+                ModDataStore.Instance.InitializeGlobal();
+                InitializeData();
                 InputHandler.EnsureExists();
                 Logger.Info($"Press '{InputHandler.CurrentKey}' to toggle hand card display visibility");
+
+                IsModActive = true;
+                Logger.Info("Mod initialization complete - Mod is now ACTIVE");
             }
             catch (Exception ex)
             {
@@ -57,6 +60,15 @@ namespace STS2ShowPlayerHandCards
                 Logger.Error($"Stack trace: {ex.StackTrace}");
                 IsModActive = false;
             }
+        }
+
+        public static void EnsureProfileServicesInitialized()
+        {
+            if (_profileServicesInitialized) return;
+
+            ModDataStore.Instance.InitializeProfileScoped();
+
+            _profileServicesInitialized = true;
         }
 
         private static ModPatcher GetOrCreatePatcher(string patcherName, string description)
@@ -124,8 +136,6 @@ namespace STS2ShowPlayerHandCards
 
         private static void InitializeData()
         {
-            ModDataStore.Instance.Initialize();
-
             var settings = ModDataStore.Instance.Get<ModSettings>(ModDataStore.SettingsKey);
             if (!Enum.TryParse<Key>(settings.ToggleKey, true, out var toggleKey))
             {
