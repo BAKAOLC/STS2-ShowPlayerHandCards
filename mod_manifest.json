@@ -1,7 +1,11 @@
 {
-  "pck_name": "STS2-ShowPlayerHandCards",
+  "id": "STS2-ShowPlayerHandCards",
   "name": "Show Player Hand Cards",
   "author": "OLC",
   "description": "Show teammate hand cards next to the multiplayer player list in real-time, with hover to view full card details",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "has_pck": false,
+  "has_dll": true,
+  "affects_gameplay": false,
+  "dependencies": []
 }
