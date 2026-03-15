@@ -1,5 +1,5 @@
 using MegaCrit.Sts2.Core.Combat;
-using STS2ShowPlayerHandCards.Patching.Models;
+using STS2RitsuLib.Patching.Models;
 using STS2ShowPlayerHandCards.Utils;
 
 namespace STS2ShowPlayerHandCards.Patches

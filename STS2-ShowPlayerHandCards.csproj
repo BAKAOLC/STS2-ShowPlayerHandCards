@@ -12,6 +12,7 @@
     <PropertyGroup>
         <Sts2Dir>E:\SteamLibrary\steamapps\common\Slay the Spire 2</Sts2Dir>
         <Sts2DataDir>$(Sts2Dir)\data_sts2_windows_x86_64</Sts2DataDir>
+        <RitsuLibDir>..\sts-2-ritsulib</RitsuLibDir>
     </PropertyGroup>
 
     <ItemGroup>
@@ -26,26 +27,17 @@
         <Reference Include="sts2" HintPath="$(Sts2DataDir)\sts2.dll" Private="False"/>
         <Reference Include="0Harmony" HintPath="$(Sts2DataDir)\0Harmony.dll" Private="False"/>
         <Reference Include="Steamworks.NET" HintPath="$(Sts2DataDir)\Steamworks.NET.dll" Private="False"/>
+        <Reference Include="STS2-RitsuLib" HintPath="$(RitsuLibDir)\.godot\mono\temp\bin\Debug\STS2-RitsuLib.dll" Private="False"/>
     </ItemGroup>
 
     <ItemGroup>
         <Content Include="mod_manifest.json"/>
     </ItemGroup>
 
-    <!-- Exclude game source reference folder from compilation -->
-    <ItemGroup>
-        <Compile Remove="sts-2-source\**"/>
-        <None Remove="sts-2-source\**"/>
-        <Content Remove="sts-2-source\**"/>
-        <EmbeddedResource Remove="sts-2-source\**"/>
-    </ItemGroup>
-    <ItemGroup>
-        <Folder Include="Data\Migration\"/>
-    </ItemGroup>
-
     <Target Name="Copy Mod" AfterTargets="PostBuildEvent">
         <Message Text="Copying mod to Slay the Spire 2 mods folder..." Importance="high"/>
-        <MakeDir Directories="$(Sts2Dir)\mods\"/>
+        <MakeDir Directories="$(Sts2Dir)\mods\$(MSBuildProjectName)\"/>
         <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(Sts2Dir)\mods\$(MSBuildProjectName)\"/>
+        <Copy SourceFiles="$(MSBuildProjectDirectory)\mod_manifest.json" DestinationFolder="$(Sts2Dir)\mods\$(MSBuildProjectName)\"/>
     </Target>
 </Project>

@@ -131,11 +131,9 @@ namespace STS2ShowPlayerHandCards.Utils
             var player = ps.Player;
             if (player?.PlayerCombatState == null || player.Creature.IsDead || LocalContext.IsMe(player))
             {
-                if (Containers.TryGetValue(ps, out var old))
-                {
-                    old.Cleanup();
-                    Containers.Remove(ps);
-                }
+                if (!Containers.TryGetValue(ps, out var old)) return;
+                old.Cleanup();
+                Containers.Remove(ps);
 
                 return;
             }
@@ -316,11 +314,9 @@ namespace STS2ShowPlayerHandCards.Utils
 
                     Callable.From(() =>
                     {
-                        if (_nCard != null && GodotObject.IsInstanceValid(_nCard))
-                        {
-                            _nCard.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
-                            PropagateMouseIgnore(_nCard);
-                        }
+                        if (_nCard == null || !GodotObject.IsInstanceValid(_nCard)) return;
+                        _nCard.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+                        PropagateMouseIgnore(_nCard);
                     }).CallDeferred();
                 }
                 catch (Exception ex)
