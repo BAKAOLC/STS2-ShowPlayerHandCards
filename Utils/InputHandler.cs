@@ -4,43 +4,33 @@ namespace STS2ShowPlayerHandCards.Utils
 {
     /// <summary>
     ///     Handles keyboard input for the mod.
-    ///     Registers input action to Godot's InputMap and listens for toggle key.
+    ///     Supports captured key combinations.
     /// </summary>
     public partial class InputHandler : Node
     {
-        /// <summary>
-        ///     The input action name registered in Godot's InputMap.
-        /// </summary>
-        public const string ToggleHandDisplayAction = "mod_toggle_hand_display";
-
-        /// <summary>
-        ///     Default key for toggling hand card visibility.
-        /// </summary>
-        public const Key DefaultToggleKey = Key.Shift;
+        public const string DefaultToggleBinding = "Shift";
 
         private static InputHandler? _instance;
-        private static Key _currentKey = DefaultToggleKey;
+        private static string _currentBinding = DefaultToggleBinding;
+        private static KeyBinding _currentKeyBinding = KeyBinding.Parse(DefaultToggleBinding);
 
-        /// <summary>
-        ///     Gets or sets the current toggle key.
-        /// </summary>
-        public static Key CurrentKey
+        public static string CurrentBinding
         {
-            get => _currentKey;
+            get => _currentBinding;
             set
             {
-                if (_currentKey == value) return;
-                _currentKey = value;
-                UpdateInputMapKey();
-                Main.Logger.Info($"Toggle key changed to: {value}");
+                if (!TryNormalizeBinding(value, out var normalized))
+                    normalized = DefaultToggleBinding;
+                if (string.Equals(_currentBinding, normalized, StringComparison.OrdinalIgnoreCase)) return;
+                _currentBinding = normalized;
+                _currentKeyBinding = KeyBinding.Parse(normalized);
+                Main.Logger.Info($"Toggle key changed to: {normalized}");
             }
         }
 
         public static void EnsureExists()
         {
             if (_instance != null && IsInstanceValid(_instance)) return;
-
-            RegisterInputAction();
 
             _instance = new() { Name = "ShowPlayerHandCards_InputHandler" };
 
@@ -50,59 +40,112 @@ namespace STS2ShowPlayerHandCards.Utils
 
         public static void Cleanup()
         {
-            if (InputMap.HasAction(ToggleHandDisplayAction))
-                InputMap.EraseAction(ToggleHandDisplayAction);
-
             if (_instance == null || !IsInstanceValid(_instance)) return;
             _instance.QueueFree();
             _instance = null;
         }
 
-        /// <summary>
-        ///     Registers the toggle action to Godot's InputMap.
-        /// </summary>
-        private static void RegisterInputAction()
+        public static bool TryNormalizeBinding(string? bindingText, out string normalized)
         {
-            if (InputMap.HasAction(ToggleHandDisplayAction))
-                InputMap.EraseAction(ToggleHandDisplayAction);
-
-            InputMap.AddAction(ToggleHandDisplayAction);
-            AddKeyToAction(_currentKey);
-
-            Main.Logger.Info($"Registered input action '{ToggleHandDisplayAction}' with key: {_currentKey}");
-        }
-
-        /// <summary>
-        ///     Updates the InputMap when the key changes.
-        /// </summary>
-        private static void UpdateInputMapKey()
-        {
-            if (!InputMap.HasAction(ToggleHandDisplayAction))
+            if (string.IsNullOrWhiteSpace(bindingText))
             {
-                RegisterInputAction();
-                return;
+                normalized = DefaultToggleBinding;
+                return false;
             }
 
-            InputMap.ActionEraseEvents(ToggleHandDisplayAction);
-            AddKeyToAction(_currentKey);
-        }
-
-        private static void AddKeyToAction(Key key)
-        {
-            var keyEvent = new InputEventKey
+            try
             {
-                Keycode = key,
-                Pressed = true,
-            };
-            InputMap.ActionAddEvent(ToggleHandDisplayAction, keyEvent);
+                normalized = KeyBinding.Parse(bindingText).ToString();
+                return true;
+            }
+            catch
+            {
+                normalized = DefaultToggleBinding;
+                return false;
+            }
         }
 
         public override void _UnhandledKeyInput(InputEvent @event)
         {
-            if (!@event.IsActionPressed(ToggleHandDisplayAction)) return;
+            if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.IsEcho())
+                return;
+
+            if (!_currentKeyBinding.Matches(keyEvent)) return;
             HandCardDisplayService.ToggleVisibility();
             Main.Logger.Info(
                 $"Hand card display toggled: {(HandCardDisplayService.IsHidden ? "Hidden" : "Visible")}");
+        }
+
+        private readonly record struct KeyBinding(Key Keycode, bool Ctrl, bool Alt, bool Shift, bool Meta)
+        {
+            public static KeyBinding Parse(string bindingText)
+            {
+                var parts = bindingText.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (parts.Length == 0)
+                    throw new FormatException("Key binding is empty.");
+
+                var ctrl = false;
+                var alt = false;
+                var shift = false;
+                var meta = false;
+                Key? key = null;
+
+                foreach (var part in parts)
+                    switch (part.ToLowerInvariant())
+                    {
+                        case "ctrl":
+                        case "control":
+                            ctrl = true;
+                            break;
+                        case "alt":
+                            alt = true;
+                            break;
+                        case "shift":
+                            if (parts.Length == 1)
+                                key = Key.Shift;
+                            shift = true;
+                            break;
+                        case "meta":
+                        case "cmd":
+                        case "command":
+                            if (parts.Length == 1)
+                                key = Key.Meta;
+                            meta = true;
+                            break;
+                        default:
+                            if (!Enum.TryParse<Key>(part, true, out var parsedKey))
+                                throw new FormatException($"Unknown key binding segment '{part}'.");
+                            key = parsedKey;
+                            break;
+                    }
+
+                if (key == null)
+                {
+                    key = ctrl ? Key.Ctrl : alt ? Key.Alt : shift ? Key.Shift : Key.Meta;
+                }
+
+                return new KeyBinding(key.Value, ctrl, alt, shift, meta);
+            }
+
+            public bool Matches(InputEventKey keyEvent)
+            {
+                return keyEvent.Keycode == Keycode
+                       && keyEvent.CtrlPressed == Ctrl
+                       && keyEvent.AltPressed == Alt
+                       && keyEvent.ShiftPressed == Shift
+                       && keyEvent.MetaPressed == Meta;
+            }
+
+            public override string ToString()
+            {
+                var parts = new List<string>();
+                if (Ctrl) parts.Add("Ctrl");
+                if (Alt) parts.Add("Alt");
+                if (Shift && Keycode != Key.Shift) parts.Add("Shift");
+                if (Meta && Keycode != Key.Meta) parts.Add("Meta");
+                parts.Add(Keycode.ToString());
+                return string.Join('+', parts.Distinct(StringComparer.OrdinalIgnoreCase));
+            }
         }
     }
 }

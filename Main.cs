@@ -4,6 +4,7 @@ using STS2RitsuLib;
 using STS2RitsuLib.Patching.Core;
 using STS2ShowPlayerHandCards.Data;
 using STS2ShowPlayerHandCards.Patches;
+using STS2ShowPlayerHandCards.Settings;
 using STS2ShowPlayerHandCards.Utils;
 using Logger = MegaCrit.Sts2.Core.Logging.Logger;
 using ModSettings = STS2ShowPlayerHandCards.Data.Models.ModSettings;
@@ -33,11 +34,12 @@ namespace STS2ShowPlayerHandCards
                     Logger.Error("Mod initialization failed: Critical patch(es) failed to apply");
                     return;
                 }
-
+                
                 ModDataStore.Initialize();
+                ModSettingsBootstrap.Initialize();
                 InitializeData();
                 InputHandler.EnsureExists();
-                Logger.Info($"Press '{InputHandler.CurrentKey}' to toggle hand card display visibility");
+                Logger.Info($"Press '{InputHandler.CurrentBinding}' to toggle hand card display visibility");
 
                 IsModActive = true;
                 Logger.Info("Mod initialization complete - Mod is now ACTIVE");
@@ -58,16 +60,16 @@ namespace STS2ShowPlayerHandCards
         private static void InitializeData()
         {
             var settings = ModDataStore.Get<ModSettings>(ModDataStore.SettingsKey);
-            if (!Enum.TryParse<Key>(settings.ToggleKey, true, out var toggleKey))
+            if (!InputHandler.TryNormalizeBinding(settings.ToggleKey, out var normalizedBinding))
             {
-                toggleKey = InputHandler.DefaultToggleKey;
+                normalizedBinding = InputHandler.DefaultToggleBinding;
                 ModDataStore.Modify<ModSettings>(ModDataStore.SettingsKey,
-                    s => s.ToggleKey = toggleKey.ToString());
+                    s => s.ToggleKey = normalizedBinding);
                 ModDataStore.Save(ModDataStore.SettingsKey);
-                Logger.Warn($"Invalid toggle key in settings: '{settings.ToggleKey}', fallback to '{toggleKey}'.");
+                Logger.Warn($"Invalid toggle key in settings: '{settings.ToggleKey}', fallback to '{normalizedBinding}'.");
             }
 
-            InputHandler.CurrentKey = toggleKey;
+            InputHandler.CurrentBinding = normalizedBinding;
         }
     }
 }

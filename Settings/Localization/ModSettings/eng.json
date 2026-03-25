@@ -1,0 +1,18 @@
+{
+  "mod.displayName": "Show Player Hand Cards",
+  "page.title": "Settings",
+  "page.description": "Adjust teammate hand-card preview scale, toggle key, and keyword-based border highlights.",
+  "section.display": "Display",
+  "toggleKey.label": "Toggle Key",
+  "toggleKey.description": "Records a keyboard shortcut and supports modifier combos.",
+  "contentScale.label": "Content Size",
+  "contentScale.description": "Scales the mini card previews shown beside each teammate.",
+  "keywords.label": "Highlight Keywords",
+  "keywords.emptyItem": "(empty keyword)",
+  "keywords.emptyDescription": "Cards containing this keyword will receive a border.",
+  "keywords.add": "Add Keyword",
+  "keywords.description": "Keywords are matched case-insensitively against card keywords and hover tips.",
+  "keywords.placeholder": "e.g. Exhaust / Ethereal / Retain",
+  "color.label": "Border Color",
+  "color.description": "Includes a live preview, RGBA controls, and hex input such as #FFD740FF."
+}

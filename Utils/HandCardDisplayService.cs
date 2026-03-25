@@ -20,11 +20,8 @@ namespace STS2ShowPlayerHandCards.Utils
     /// </summary>
     public static partial class HandCardDisplayService
     {
-        private const float MiniCardScale = 0.065f;
         private const float CardSpacing = 1f;
         private const float CardYOffset = 4f;
-
-        private static readonly Vector2 ScaledSize = NCard.defaultSize * MiniCardScale;
         private static readonly Dictionary<NMultiplayerPlayerState, CardDisplayContainer> Containers = [];
         private static bool _subscribed;
         private static bool _hidden;
@@ -259,14 +256,15 @@ namespace STS2ShowPlayerHandCards.Utils
         private sealed class MiniCard : IDisposable
         {
             private CardModel? _card;
+            private Control? _highlightOverlay;
             private NCard? _nCard;
 
             public MiniCard(CardModel card)
             {
                 Wrapper = new()
                 {
-                    CustomMinimumSize = ScaledSize,
-                    Size = ScaledSize,
+                    CustomMinimumSize = HandCardDisplaySettings.GetScaledCardSize(),
+                    Size = HandCardDisplaySettings.GetScaledCardSize(),
                     MouseFilter = Control.MouseFilterEnum.Stop,
                     ClipContents = false,
                 };
@@ -301,16 +299,29 @@ namespace STS2ShowPlayerHandCards.Utils
                     _nCard = null;
                 }
 
+                if (_highlightOverlay != null && GodotObject.IsInstanceValid(_highlightOverlay))
+                {
+                    _highlightOverlay.QueueFree();
+                    _highlightOverlay = null;
+                }
+
                 try
                 {
                     _nCard = NCard.Create(card);
                     if (_nCard == null) return;
 
+                    var scaledSize = HandCardDisplaySettings.GetScaledCardSize();
+
                     _nCard.PivotOffset = Vector2.Zero;
-                    _nCard.Scale = Vector2.One * MiniCardScale;
-                    _nCard.Position = ScaledSize / 2f;
+                    _nCard.Scale = Vector2.One * HandCardDisplaySettings.GetMiniCardScale();
+                    _nCard.Position = scaledSize / 2f;
                     _nCard.MouseFilter = Control.MouseFilterEnum.Ignore;
                     Wrapper.AddChild(_nCard);
+                    if (HandCardDisplaySettings.ShouldHighlight(card))
+                    {
+                        _highlightOverlay = CreateHighlightOverlay();
+                        Wrapper.AddChild(_highlightOverlay);
+                    }
 
                     Callable.From(() =>
                     {
@@ -323,6 +334,29 @@ namespace STS2ShowPlayerHandCards.Utils
                 {
                     Main.Logger.Error($"Failed to create mini card: {ex.Message}");
                 }
+            }
+
+            private static Control CreateHighlightOverlay()
+            {
+                var overlay = new Panel
+                {
+                    MouseFilter = Control.MouseFilterEnum.Ignore,
+                };
+                overlay.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+                overlay.AddThemeStyleboxOverride("panel", new StyleBoxFlat
+                {
+                    DrawCenter = false,
+                    BorderColor = HandCardDisplaySettings.GetHighlightColor(),
+                    BorderWidthLeft = 3,
+                    BorderWidthTop = 3,
+                    BorderWidthRight = 3,
+                    BorderWidthBottom = 3,
+                    CornerRadiusTopLeft = 8,
+                    CornerRadiusTopRight = 8,
+                    CornerRadiusBottomLeft = 8,
+                    CornerRadiusBottomRight = 8,
+                });
+                return overlay;
             }
 
             private static void PropagateMouseIgnore(Control node)
