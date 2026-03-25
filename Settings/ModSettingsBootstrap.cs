@@ -60,8 +60,10 @@ namespace STS2ShowPlayerHandCards.Settings
                             ModSettingsLocalization.T("toggleKey.label", "Toggle Key"),
                             new ToggleKeyBinding(toggleKeyBinding),
                             allowModifierCombos: true,
+                            allowModifierOnly: false,
+                            distinguishModifierSides: false,
                             description: ModSettingsLocalization.T("toggleKey.description",
-                                "Records a keyboard shortcut and supports modifier combos."))
+                                "Records a keyboard shortcut, supports modifier combos, and requires a non-modifier key."))
                         .AddSlider(
                             "content_scale",
                             ModSettingsLocalization.T("contentScale.label", "Content Size"),

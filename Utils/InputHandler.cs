@@ -76,6 +76,11 @@ namespace STS2ShowPlayerHandCards.Utils
                 $"Hand card display toggled: {(HandCardDisplayService.IsHidden ? "Hidden" : "Visible")}");
         }
 
+        private static bool IsModifierKey(Key key)
+        {
+            return TryGetModifierKind(key, out _);
+        }
+
         private readonly record struct KeyBinding(Key Keycode, bool Ctrl, bool Alt, bool Shift, bool Meta)
         {
             public static KeyBinding Parse(string bindingText)
@@ -95,12 +100,24 @@ namespace STS2ShowPlayerHandCards.Utils
                     {
                         case "ctrl":
                         case "control":
+                        case "leftctrl":
+                        case "rightctrl":
+                        case "lctrl":
+                        case "rctrl":
                             ctrl = true;
                             break;
                         case "alt":
+                        case "leftalt":
+                        case "rightalt":
+                        case "lalt":
+                        case "ralt":
                             alt = true;
                             break;
                         case "shift":
+                        case "leftshift":
+                        case "rightshift":
+                        case "lshift":
+                        case "rshift":
                             if (parts.Length == 1)
                                 key = Key.Shift;
                             shift = true;
@@ -108,6 +125,10 @@ namespace STS2ShowPlayerHandCards.Utils
                         case "meta":
                         case "cmd":
                         case "command":
+                        case "leftmeta":
+                        case "rightmeta":
+                        case "lmeta":
+                        case "rmeta":
                             if (parts.Length == 1)
                                 key = Key.Meta;
                             meta = true;
@@ -129,11 +150,20 @@ namespace STS2ShowPlayerHandCards.Utils
 
             public bool Matches(InputEventKey keyEvent)
             {
-                return keyEvent.Keycode == Keycode
-                       && keyEvent.CtrlPressed == Ctrl
-                       && keyEvent.AltPressed == Alt
-                       && keyEvent.ShiftPressed == Shift
-                       && keyEvent.MetaPressed == Meta;
+                var modifiersMatch = keyEvent.CtrlPressed == Ctrl
+                                     && keyEvent.AltPressed == Alt
+                                     && keyEvent.ShiftPressed == Shift
+                                     && keyEvent.MetaPressed == Meta;
+                if (!modifiersMatch)
+                    return false;
+
+                if (!TryMatchesPrimaryKey(keyEvent.Keycode))
+                    return false;
+
+                if (!HasOnlyModifierKeys())
+                    return true;
+
+                return InputHandler.IsModifierKey(keyEvent.Keycode) && IsIncludedModifier(keyEvent.Keycode);
             }
 
             public override string ToString()
@@ -146,6 +176,84 @@ namespace STS2ShowPlayerHandCards.Utils
                 parts.Add(Keycode.ToString());
                 return string.Join('+', parts.Distinct(StringComparer.OrdinalIgnoreCase));
             }
+
+            private bool HasOnlyModifierKeys()
+            {
+                return InputHandler.IsModifierKey(Keycode);
+            }
+
+            private bool IsIncludedModifier(Key key)
+            {
+                return GetModifierKind(key) switch
+                {
+                    ModifierKind.Ctrl => Ctrl,
+                    ModifierKind.Alt => Alt,
+                    ModifierKind.Shift => Shift,
+                    ModifierKind.Meta => Meta,
+                    _ => false,
+                };
+            }
+
+            private bool TryMatchesPrimaryKey(Key key)
+            {
+                if (key == Keycode)
+                    return true;
+
+                if (!InputHandler.IsModifierKey(Keycode))
+                    return false;
+
+                if (InputHandler.IsSpecificModifierSide(Keycode))
+                    return false;
+
+                return GetModifierKind(key) == GetModifierKind(Keycode);
+            }
+        }
+
+        private enum ModifierKind
+        {
+            None = 0,
+            Ctrl = 1,
+            Alt = 2,
+            Shift = 3,
+            Meta = 4,
+        }
+
+        private static bool TryGetModifierKind(Key key, out ModifierKind kind)
+        {
+            kind = GetModifierKind(key);
+            return kind != ModifierKind.None;
+        }
+
+        private static ModifierKind GetModifierKind(Key key)
+        {
+            var name = key.ToString().ToLowerInvariant();
+            if (name.Contains("ctrl") || name.Contains("control"))
+                return ModifierKind.Ctrl;
+            if (name.Contains("shift"))
+                return ModifierKind.Shift;
+            if (name.Contains("alt"))
+                return ModifierKind.Alt;
+            if (name.Contains("meta") || name.Contains("cmd") || name.Contains("command"))
+                return ModifierKind.Meta;
+            return ModifierKind.None;
+        }
+
+        private static bool IsSpecificModifierSide(Key key)
+        {
+            var name = key.ToString().ToLowerInvariant();
+            return (name.Contains("left") || name.StartsWith("l")) && IsModifierKeyName(name)
+                   || (name.Contains("right") || name.StartsWith("r")) && IsModifierKeyName(name);
+        }
+
+        private static bool IsModifierKeyName(string keyName)
+        {
+            return keyName.Contains("ctrl")
+                   || keyName.Contains("control")
+                   || keyName.Contains("shift")
+                   || keyName.Contains("alt")
+                   || keyName.Contains("meta")
+                   || keyName.Contains("cmd")
+                   || keyName.Contains("command");
         }
     }
 }
