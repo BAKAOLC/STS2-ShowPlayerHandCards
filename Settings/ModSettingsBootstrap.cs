@@ -69,7 +69,7 @@ namespace STS2ShowPlayerHandCards.Settings
                             ModSettingsLocalization.T("contentScale.label", "Content Size"),
                             new ContentScaleBinding(contentScaleBinding),
                             0.5f,
-                            2.0f,
+                            5.0f,
                             0.05f,
                             value => $"{value:0.00}x",
                             ModSettingsLocalization.T("contentScale.description",
