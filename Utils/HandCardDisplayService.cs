@@ -23,6 +23,8 @@ namespace STS2ShowPlayerHandCards.Utils
         private const float CardSpacing = 1f;
         private const float CardYOffset = 4f;
         private static readonly Dictionary<NMultiplayerPlayerState, CardDisplayContainer> Containers = [];
+        private static readonly List<CardPile> SubscribedHands = [];
+        private static readonly Action<CardModel> HandChangedHandler = static _ => RefreshAll();
         private static bool _subscribed;
         private static bool _hidden;
 
@@ -69,6 +71,8 @@ namespace STS2ShowPlayerHandCards.Utils
         /// </summary>
         public static void SubscribeCurrentCombat()
         {
+            UnsubscribeCurrentCombat();
+
             var run = NRun.Instance;
             if (run?.GlobalUi?.MultiplayerPlayerContainer == null) return;
             var container = run.GlobalUi.MultiplayerPlayerContainer;
@@ -80,9 +84,22 @@ namespace STS2ShowPlayerHandCards.Utils
                 if (player == null || LocalContext.IsMe(player)) continue;
                 var pcs = player.PlayerCombatState;
                 if (pcs == null) continue;
-                pcs.Hand.CardAdded += _ => RefreshAll();
-                pcs.Hand.CardRemoved += _ => RefreshAll();
+                var hand = pcs.Hand;
+                hand.CardAdded += HandChangedHandler;
+                hand.CardRemoved += HandChangedHandler;
+                SubscribedHands.Add(hand);
             }
+        }
+
+        private static void UnsubscribeCurrentCombat()
+        {
+            foreach (var hand in SubscribedHands)
+            {
+                hand.CardAdded -= HandChangedHandler;
+                hand.CardRemoved -= HandChangedHandler;
+            }
+
+            SubscribedHands.Clear();
         }
 
         public static void RefreshAll()
@@ -113,6 +130,7 @@ namespace STS2ShowPlayerHandCards.Utils
 
         public static void HideAll()
         {
+            UnsubscribeCurrentCombat();
             foreach (var c in Containers.Values) c.Cleanup();
             Containers.Clear();
         }
@@ -135,8 +153,11 @@ namespace STS2ShowPlayerHandCards.Utils
                 return;
             }
 
-            if (!Containers.TryGetValue(ps, out var display) || !GodotObject.IsInstanceValid(display))
+            if (!Containers.TryGetValue(ps, out var display) || !GodotObject.IsInstanceValid(display) ||
+                display.IsReleased)
             {
+                if (display != null && GodotObject.IsInstanceValid(display) && !display.IsReleased)
+                    display.Cleanup();
                 display = new(ps);
                 Containers[ps] = display;
                 display.Initialize();
@@ -172,6 +193,8 @@ namespace STS2ShowPlayerHandCards.Utils
             {
             }
 
+            public bool IsReleased { get; private set; }
+
             public void Initialize()
             {
                 _spacer = new()
@@ -194,6 +217,7 @@ namespace STS2ShowPlayerHandCards.Utils
 
             public override void _Process(double delta)
             {
+                if (IsReleased) return;
                 if (_spacer != null && _spacer.IsInsideTree())
                     GlobalPosition = _spacer.GlobalPosition + new Vector2(0, CardYOffset);
             }
@@ -209,12 +233,12 @@ namespace STS2ShowPlayerHandCards.Utils
             {
                 _isHidden = hidden;
                 Visible = !hidden;
-                if (_spacer != null)
-                    _spacer.CustomMinimumSize = hidden ? Vector2.Zero : new(_lastWidth, 0);
+                _spacer?.CustomMinimumSize = hidden ? Vector2.Zero : new(_lastWidth, 0);
             }
 
             public void RefreshCards(IReadOnlyList<CardModel> cards)
             {
+                if (IsReleased) return;
                 while (_cards.Count > cards.Count)
                 {
                     _cards[^1].Dispose();
@@ -238,6 +262,8 @@ namespace STS2ShowPlayerHandCards.Utils
 
             public void Cleanup()
             {
+                if (IsReleased) return;
+                IsReleased = true;
                 Resized -= OnResized;
                 foreach (var mc in _cards) mc.Dispose();
                 _cards.Clear();
