@@ -71,10 +71,11 @@ namespace STS2ShowPlayerHandCards.Utils
         /// </summary>
         public static void SubscribeCurrentCombat()
         {
-            UnsubscribeCurrentCombat();
-
             var run = NRun.Instance;
             if (run?.GlobalUi?.MultiplayerPlayerContainer == null) return;
+
+            UnsubscribeCurrentCombat();
+
             var container = run.GlobalUi.MultiplayerPlayerContainer;
 
             for (var i = 0; i < container.GetChildCount(); i++)
@@ -108,7 +109,7 @@ namespace STS2ShowPlayerHandCards.Utils
             {
                 if (!CombatManager.Instance.IsInProgress)
                 {
-                    HideAll();
+                    ClearDisplayContainersOnly();
                     return;
                 }
 
@@ -131,6 +132,11 @@ namespace STS2ShowPlayerHandCards.Utils
         public static void HideAll()
         {
             UnsubscribeCurrentCombat();
+            ClearDisplayContainersOnly();
+        }
+
+        private static void ClearDisplayContainersOnly()
+        {
             foreach (var c in Containers.Values) c.Cleanup();
             Containers.Clear();
         }
