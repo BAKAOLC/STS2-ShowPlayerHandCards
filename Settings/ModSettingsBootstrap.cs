@@ -1,6 +1,7 @@
 using Godot;
 using STS2RitsuLib;
 using STS2RitsuLib.Settings;
+using STS2RitsuLib.Utils.Persistence;
 using STS2ShowPlayerHandCards.Data;
 using STS2ShowPlayerHandCards.Data.Models;
 using STS2ShowPlayerHandCards.Utils;
@@ -59,10 +60,10 @@ namespace STS2ShowPlayerHandCards.Settings
                             "toggle_key",
                             ModSettingsLocalization.T("toggleKey.label", "Toggle Key"),
                             new ToggleKeyBinding(toggleKeyBinding),
-                            allowModifierCombos: true,
-                            allowModifierOnly: false,
-                            distinguishModifierSides: false,
-                            description: ModSettingsLocalization.T("toggleKey.description",
+                            true,
+                            false,
+                            false,
+                            ModSettingsLocalization.T("toggleKey.description",
                                 "Records a keyboard shortcut, supports modifier combos, and requires a non-modifier key."))
                         .AddSlider(
                             "content_scale",
@@ -78,7 +79,7 @@ namespace STS2ShowPlayerHandCards.Settings
                             "highlight_keywords",
                             ModSettingsLocalization.T("keywords.label", "Highlight Keywords"),
                             keywordListBinding,
-                            () => new HighlightKeywordEntry(),
+                            () => new(),
                             item => ModSettingsText.Literal(string.IsNullOrWhiteSpace(item.Keyword)
                                 ? ModSettingsLocalization.Get("keywords.emptyItem", "(empty keyword)")
                                 : item.Keyword),
@@ -109,21 +110,43 @@ namespace STS2ShowPlayerHandCards.Settings
             {
                 Text = itemContext.Item.Keyword,
                 SelectAllOnFocus = true,
-                PlaceholderText = ModSettingsLocalization.Get("keywords.placeholder", "e.g. Exhaust / Ethereal / Retain"),
+                PlaceholderText =
+                    ModSettingsLocalization.Get("keywords.placeholder", "e.g. Exhaust / Ethereal / Retain"),
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                CustomMinimumSize = new Vector2(260f, 44f),
+                CustomMinimumSize = new(260f, 44f),
             };
             edit.AddThemeFontSizeOverride("font_size", 18);
-            edit.AddThemeColorOverride("font_color", new Color(1f, 0.964706f, 0.886275f));
+            edit.AddThemeColorOverride("font_color", new(1f, 0.964706f, 0.886275f));
             edit.AddThemeStyleboxOverride("normal", CreateInputStyle(false));
             edit.AddThemeStyleboxOverride("focus", CreateInputStyle(true));
             edit.TextSubmitted += value =>
             {
-                itemContext.Update(new HighlightKeywordEntry { Keyword = value.Trim() });
+                itemContext.Update(new() { Keyword = value.Trim() });
                 edit.ReleaseFocus();
             };
-            edit.FocusExited += () => itemContext.Update(new HighlightKeywordEntry { Keyword = edit.Text.Trim() });
+            edit.FocusExited += () => itemContext.Update(new() { Keyword = edit.Text.Trim() });
             return edit;
+        }
+
+        private static StyleBoxFlat CreateInputStyle(bool focused)
+        {
+            return new()
+            {
+                BgColor = focused ? new(0.10f, 0.14f, 0.19f, 0.98f) : new Color(0.08f, 0.11f, 0.15f, 0.96f),
+                BorderColor = focused ? new(0.92f, 0.74f, 0.32f, 0.9f) : new Color(0.36f, 0.49f, 0.60f, 0.5f),
+                BorderWidthLeft = 2,
+                BorderWidthTop = 2,
+                BorderWidthRight = 2,
+                BorderWidthBottom = 2,
+                CornerRadiusTopLeft = 10,
+                CornerRadiusTopRight = 10,
+                CornerRadiusBottomLeft = 10,
+                CornerRadiusBottomRight = 10,
+                ContentMarginLeft = 14,
+                ContentMarginTop = 10,
+                ContentMarginRight = 14,
+                ContentMarginBottom = 10,
+            };
         }
 
         private sealed class ToggleKeyBinding(IModSettingsValueBinding<string> inner)
@@ -131,11 +154,7 @@ namespace STS2ShowPlayerHandCards.Settings
         {
             public string ModId => inner.ModId;
             public string DataKey => inner.DataKey;
-            public STS2RitsuLib.Utils.Persistence.SaveScope Scope => inner.Scope;
-            public IStructuredModSettingsValueAdapter<string> Adapter =>
-                inner is IStructuredModSettingsValueBinding<string> structured
-                    ? structured.Adapter
-                    : ModSettingsStructuredData.Json<string>();
+            public SaveScope Scope => inner.Scope;
 
             public string Read()
             {
@@ -159,6 +178,11 @@ namespace STS2ShowPlayerHandCards.Settings
                     ? defaults.CreateDefaultValue()
                     : InputHandler.DefaultToggleBinding;
             }
+
+            public IStructuredModSettingsValueAdapter<string> Adapter =>
+                inner is IStructuredModSettingsValueBinding<string> structured
+                    ? structured.Adapter
+                    : ModSettingsStructuredData.Json<string>();
         }
 
         private sealed class ContentScaleBinding(IModSettingsValueBinding<float> inner)
@@ -166,11 +190,7 @@ namespace STS2ShowPlayerHandCards.Settings
         {
             public string ModId => inner.ModId;
             public string DataKey => inner.DataKey;
-            public STS2RitsuLib.Utils.Persistence.SaveScope Scope => inner.Scope;
-            public IStructuredModSettingsValueAdapter<float> Adapter =>
-                inner is IStructuredModSettingsValueBinding<float> structured
-                    ? structured.Adapter
-                    : ModSettingsStructuredData.Json<float>();
+            public SaveScope Scope => inner.Scope;
 
             public float Read()
             {
@@ -194,28 +214,11 @@ namespace STS2ShowPlayerHandCards.Settings
                     ? defaults.CreateDefaultValue()
                     : 1.0f;
             }
-        }
 
-        private static StyleBoxFlat CreateInputStyle(bool focused)
-        {
-            return new StyleBoxFlat
-            {
-                BgColor = focused ? new Color(0.10f, 0.14f, 0.19f, 0.98f) : new Color(0.08f, 0.11f, 0.15f, 0.96f),
-                BorderColor = focused ? new Color(0.92f, 0.74f, 0.32f, 0.9f) : new Color(0.36f, 0.49f, 0.60f, 0.5f),
-                BorderWidthLeft = 2,
-                BorderWidthTop = 2,
-                BorderWidthRight = 2,
-                BorderWidthBottom = 2,
-                CornerRadiusTopLeft = 10,
-                CornerRadiusTopRight = 10,
-                CornerRadiusBottomLeft = 10,
-                CornerRadiusBottomRight = 10,
-                ContentMarginLeft = 14,
-                ContentMarginTop = 10,
-                ContentMarginRight = 14,
-                ContentMarginBottom = 10,
-            };
+            public IStructuredModSettingsValueAdapter<float> Adapter =>
+                inner is IStructuredModSettingsValueBinding<float> structured
+                    ? structured.Adapter
+                    : ModSettingsStructuredData.Json<float>();
         }
-
     }
 }

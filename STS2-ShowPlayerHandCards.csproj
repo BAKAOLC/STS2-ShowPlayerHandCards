@@ -16,7 +16,7 @@
 
     <ItemGroup>
         <PackageReference Include="Krafs.Publicizer" Version="2.3.0" PrivateAssets="all"/>
-        <PackageReference Include="STS2.RitsuLib" Version="0.0.16" />
+        <PackageReference Include="STS2.RitsuLib" Version="0.0.16"/>
     </ItemGroup>
 
     <ItemGroup>
@@ -34,7 +34,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <EmbeddedResource Include="Settings\Localization\**\*.json" />
+        <EmbeddedResource Include="Settings\Localization\**\*.json"/>
     </ItemGroup>
 
     <Target Name="Copy Mod" AfterTargets="PostBuildEvent">

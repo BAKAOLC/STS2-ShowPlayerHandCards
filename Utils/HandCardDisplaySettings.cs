@@ -27,7 +27,7 @@ namespace STS2ShowPlayerHandCards.Utils
             if (TryParseHexColor(settings.HighlightColorHex, out var parsed))
                 return parsed;
 
-            return new Color(1f, 215f / 255f, 64f / 255f, 1f);
+            return new(1f, 215f / 255f, 64f / 255f);
         }
 
         public static bool ShouldHighlight(CardModel card)
@@ -83,8 +83,8 @@ namespace STS2ShowPlayerHandCards.Utils
             if (hex.Length == 6)
                 hex += "FF";
 
-            color = new Color(
-                Convert.ToByte(hex[0..2], 16) / 255f,
+            color = new(
+                Convert.ToByte(hex[..2], 16) / 255f,
                 Convert.ToByte(hex[2..4], 16) / 255f,
                 Convert.ToByte(hex[4..6], 16) / 255f,
                 Convert.ToByte(hex[6..8], 16) / 255f);

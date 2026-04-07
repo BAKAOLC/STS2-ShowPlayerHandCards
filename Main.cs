@@ -1,4 +1,3 @@
-using Godot;
 using MegaCrit.Sts2.Core.Modding;
 using STS2RitsuLib;
 using STS2RitsuLib.Patching.Core;
@@ -34,7 +33,7 @@ namespace STS2ShowPlayerHandCards
                     Logger.Error("Mod initialization failed: Critical patch(es) failed to apply");
                     return;
                 }
-                
+
                 ModDataStore.Initialize();
                 ModSettingsBootstrap.Initialize();
                 InitializeData();
@@ -55,6 +54,7 @@ namespace STS2ShowPlayerHandCards
         private static void RegisterMainPatches(ModPatcher patcher)
         {
             patcher.RegisterPatch<CombatSetupPatch>();
+            patcher.RegisterPatch<CardModelGetDescriptionEnergyVarRollbackPatch>();
         }
 
         private static void InitializeData()
@@ -66,7 +66,8 @@ namespace STS2ShowPlayerHandCards
                 ModDataStore.Modify<ModSettings>(ModDataStore.SettingsKey,
                     s => s.ToggleKey = normalizedBinding);
                 ModDataStore.Save(ModDataStore.SettingsKey);
-                Logger.Warn($"Invalid toggle key in settings: '{settings.ToggleKey}', fallback to '{normalizedBinding}'.");
+                Logger.Warn(
+                    $"Invalid toggle key in settings: '{settings.ToggleKey}', fallback to '{normalizedBinding}'.");
             }
 
             InputHandler.CurrentBinding = normalizedBinding;

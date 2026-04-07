@@ -1,4 +1,5 @@
 using Godot;
+using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -97,6 +98,17 @@ namespace STS2ShowPlayerHandCards.Utils
                 hand.ContentsChanged -= HandContentsChangedHandler;
 
             SubscribedHands.Clear();
+        }
+
+        private static void ApplyMiniTeammateCardDescription(NCard nCard, CardModel model)
+        {
+            if (!nCard.IsNodeReady())
+                return;
+            var label = nCard.GetNodeOrNull<MegaRichTextLabel>("%DescriptionLabel");
+            if (label == null)
+                return;
+            var text = model.GetDescriptionForPile(PileType.Hand, model.CurrentTarget);
+            label.SetTextAutoSize("[center]" + text + "[/center]");
         }
 
         public static void RefreshAll()
@@ -353,8 +365,9 @@ namespace STS2ShowPlayerHandCards.Utils
 
                     Callable.From(() =>
                     {
-                        if (_nCard == null || !GodotObject.IsInstanceValid(_nCard)) return;
-                        _nCard.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+                        if (_nCard == null || !GodotObject.IsInstanceValid(_nCard) || _card == null)
+                            return;
+                        ApplyMiniTeammateCardDescription(_nCard, _card);
                         PropagateMouseIgnore(_nCard);
                     }).CallDeferred();
                 }
