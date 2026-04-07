@@ -4,7 +4,7 @@
   "page.description": "调整队友手牌预览的显示大小、切换按键，以及基于关键词的边框高亮。",
   "section.display": "显示",
   "toggleKey.label": "切换按键",
-  "toggleKey.description": "录制一个键盘快捷键，支持组合键，并且必须包含一个非修饰键。",
+  "toggleKey.description": "录制键盘快捷键；可仅使用修饰键（如 Shift），也支持修饰键组合。",
   "contentScale.label": "内容大小",
   "contentScale.description": "调整显示在每位队友旁边的迷你卡牌大小。",
   "keywords.label": "高亮关键词",

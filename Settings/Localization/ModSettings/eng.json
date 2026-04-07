@@ -4,7 +4,7 @@
   "page.description": "Adjust teammate hand-card preview scale, toggle key, and keyword-based border highlights.",
   "section.display": "Display",
   "toggleKey.label": "Toggle Key",
-  "toggleKey.description": "Records a keyboard shortcut, supports modifier combos, and requires a non-modifier key.",
+  "toggleKey.description": "Records a keyboard shortcut; supports modifier-only bindings (e.g. Shift) and modifier combos.",
   "contentScale.label": "Content Size",
   "contentScale.description": "Scales the mini card previews shown beside each teammate.",
   "keywords.label": "Highlight Keywords",
