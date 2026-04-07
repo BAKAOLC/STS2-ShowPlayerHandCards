@@ -24,7 +24,7 @@ namespace STS2ShowPlayerHandCards.Utils
         private const float CardYOffset = 4f;
         private static readonly Dictionary<NMultiplayerPlayerState, CardDisplayContainer> Containers = [];
         private static readonly List<CardPile> SubscribedHands = [];
-        private static readonly Action<CardModel> HandChangedHandler = static _ => RefreshAll();
+        private static readonly Action HandContentsChangedHandler = static () => RefreshAll();
         private static bool _subscribed;
         private static bool _hidden;
 
@@ -86,8 +86,7 @@ namespace STS2ShowPlayerHandCards.Utils
                 var pcs = player.PlayerCombatState;
                 if (pcs == null) continue;
                 var hand = pcs.Hand;
-                hand.CardAdded += HandChangedHandler;
-                hand.CardRemoved += HandChangedHandler;
+                hand.ContentsChanged += HandContentsChangedHandler;
                 SubscribedHands.Add(hand);
             }
         }
@@ -95,10 +94,7 @@ namespace STS2ShowPlayerHandCards.Utils
         private static void UnsubscribeCurrentCombat()
         {
             foreach (var hand in SubscribedHands)
-            {
-                hand.CardAdded -= HandChangedHandler;
-                hand.CardRemoved -= HandChangedHandler;
-            }
+                hand.ContentsChanged -= HandContentsChangedHandler;
 
             SubscribedHands.Clear();
         }
