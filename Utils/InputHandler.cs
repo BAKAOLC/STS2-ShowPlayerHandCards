@@ -11,22 +11,21 @@ namespace STS2ShowPlayerHandCards.Utils
         public const string DefaultToggleBinding = "Shift";
 
         private static InputHandler? _instance;
-        private static string _currentBinding = DefaultToggleBinding;
         private static KeyBinding _currentKeyBinding = KeyBinding.Parse(DefaultToggleBinding);
 
         public static string CurrentBinding
         {
-            get => _currentBinding;
+            get;
             set
             {
                 if (!TryNormalizeBinding(value, out var normalized))
                     normalized = DefaultToggleBinding;
-                if (string.Equals(_currentBinding, normalized, StringComparison.OrdinalIgnoreCase)) return;
-                _currentBinding = normalized;
+                if (string.Equals(field, normalized, StringComparison.OrdinalIgnoreCase)) return;
+                field = normalized;
                 _currentKeyBinding = KeyBinding.Parse(normalized);
                 Main.Logger.Info($"Toggle key changed to: {normalized}");
             }
-        }
+        } = DefaultToggleBinding;
 
         public static void EnsureExists()
         {
@@ -67,7 +66,7 @@ namespace STS2ShowPlayerHandCards.Utils
 
         public override void _UnhandledKeyInput(InputEvent @event)
         {
-            if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.IsEcho())
+            if (@event is not InputEventKey { Pressed: true } keyEvent || keyEvent.IsEcho())
                 return;
 
             if (!_currentKeyBinding.Matches(keyEvent)) return;
@@ -179,7 +178,7 @@ namespace STS2ShowPlayerHandCards.Utils
                             break;
                     }
 
-                if (key == null) key = ctrl ? Key.Ctrl : alt ? Key.Alt : shift ? Key.Shift : Key.Meta;
+                key ??= ctrl ? Key.Ctrl : alt ? Key.Alt : shift ? Key.Shift : Key.Meta;
 
                 return new(key.Value, ctrl, alt, shift, meta);
             }

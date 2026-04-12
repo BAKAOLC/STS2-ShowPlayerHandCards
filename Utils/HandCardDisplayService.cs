@@ -12,26 +12,14 @@ using MegaCrit.Sts2.Core.Nodes.Multiplayer;
 
 namespace STS2ShowPlayerHandCards.Utils
 {
-    /// <summary>
-    ///     Displays teammate hand cards as scaled-down full NCard images
-    ///     next to the multiplayer player list.
-    ///     Uses the spacer-in-layout + sync-position pattern so the actual
-    ///     card container is a direct child of the player state node and
-    ///     won't be clipped by the TopInfoContainer's box.
-    /// </summary>
     public static partial class HandCardDisplayService
     {
-        private const float CardSpacing = 1f;
-        private const float CardYOffset = 4f;
         private static readonly Dictionary<NMultiplayerPlayerState, CardDisplayContainer> Containers = [];
         private static readonly List<CardPile> SubscribedHands = [];
         private static readonly Action HandContentsChangedHandler = static () => RefreshAll();
         private static bool _subscribed;
         private static bool _hidden;
 
-        /// <summary>
-        ///     Gets or sets whether the hand card display is currently hidden.
-        /// </summary>
         public static bool IsHidden
         {
             get => _hidden;
@@ -43,9 +31,6 @@ namespace STS2ShowPlayerHandCards.Utils
             }
         }
 
-        /// <summary>
-        ///     Toggles the visibility of the hand card display.
-        /// </summary>
         public static void ToggleVisibility()
         {
             IsHidden = !IsHidden;
@@ -65,11 +50,6 @@ namespace STS2ShowPlayerHandCards.Utils
             CombatManager.Instance.TurnStarted += _ => RefreshAll();
         }
 
-        /// <summary>
-        ///     Called from the Postfix of SetUpCombat. Since CombatSetUp event
-        ///     has already fired by the time the Postfix runs, we must subscribe
-        ///     to hand events here directly for the current combat.
-        /// </summary>
         public static void SubscribeCurrentCombat()
         {
             var run = NRun.Instance;
@@ -78,7 +58,6 @@ namespace STS2ShowPlayerHandCards.Utils
             UnsubscribeCurrentCombat();
 
             var container = run.GlobalUi.MultiplayerPlayerContainer;
-
             for (var i = 0; i < container.GetChildCount(); i++)
             {
                 if (container.GetChild(i) is not NMultiplayerPlayerState ps) continue;
@@ -96,7 +75,6 @@ namespace STS2ShowPlayerHandCards.Utils
         {
             foreach (var hand in SubscribedHands)
                 hand.ContentsChanged -= HandContentsChangedHandler;
-
             SubscribedHands.Clear();
         }
 
@@ -163,7 +141,6 @@ namespace STS2ShowPlayerHandCards.Utils
                 if (!Containers.TryGetValue(ps, out var old)) return;
                 old.Cleanup();
                 Containers.Remove(ps);
-
                 return;
             }
 
@@ -180,19 +157,11 @@ namespace STS2ShowPlayerHandCards.Utils
             display.RefreshCards(player.PlayerCombatState.Hand.Cards);
         }
 
-        /// <summary>
-        ///     Actual HBoxContainer holding mini cards.
-        ///     Lives as a direct child of NMultiplayerPlayerState (not inside TopInfoContainer)
-        ///     so it won't be clipped. A spacer Control inside TopInfoContainer reserves
-        ///     the layout space, and _Process syncs position every frame.
-        /// </summary>
         private partial class CardDisplayContainer : HBoxContainer
         {
             private readonly List<MiniCard> _cards = [];
             private readonly NMultiplayerPlayerState? _playerState;
-
             private bool _isHidden;
-            private float _lastWidth;
             private Control? _spacer;
 
             public CardDisplayContainer(NMultiplayerPlayerState playerState)
@@ -200,7 +169,7 @@ namespace STS2ShowPlayerHandCards.Utils
                 _playerState = playerState;
                 Name = "HandCardDisplayContainer";
                 MouseFilter = MouseFilterEnum.Ignore;
-                AddThemeConstantOverride("separation", (int)CardSpacing);
+                AddThemeConstantOverride("separation", (int)HandCardDisplaySettings.GetCardSpacing());
             }
 
             public CardDisplayContainer()
@@ -222,37 +191,38 @@ namespace STS2ShowPlayerHandCards.Utils
 
                 var topContainer = _playerState.GetNode<HBoxContainer>("TopInfoContainer");
                 topContainer.AddChild(_spacer);
-
                 _playerState.AddChild(this);
-                Resized += OnResized;
-
                 SetHidden(_hidden);
+                RefreshLayout();
             }
 
             public override void _Process(double delta)
             {
-                if (IsReleased) return;
-                if (_spacer != null && _spacer.IsInsideTree())
-                    GlobalPosition = _spacer.GlobalPosition + new Vector2(0, CardYOffset);
+                if (IsReleased || _spacer == null || !_spacer.IsInsideTree()) return;
+                GlobalPosition = _spacer.GlobalPosition + HandCardDisplaySettings.GetAutoOffset() +
+                                 HandCardDisplaySettings.GetUserOffset();
             }
 
-            private void OnResized()
+            private void RefreshLayout()
             {
-                _lastWidth = Size.X;
-                if (_spacer != null && !_isHidden)
-                    _spacer.CustomMinimumSize = new(Size.X, 0);
+                AddThemeConstantOverride("separation", (int)HandCardDisplaySettings.GetCardSpacing());
+                var scaledSize = HandCardDisplaySettings.GetScaledCardSize();
+                var width = HandCardDisplaySettings.GetContentWidth(_cards.Count);
+                CustomMinimumSize = new(width, scaledSize.Y);
+                _spacer?.CustomMinimumSize = _isHidden ? Vector2.Zero : new(width, 0f);
+                Visible = !_isHidden && _cards.Count > 0;
             }
 
             public void SetHidden(bool hidden)
             {
                 _isHidden = hidden;
-                Visible = !hidden;
-                _spacer?.CustomMinimumSize = hidden ? Vector2.Zero : new(_lastWidth, 0);
+                RefreshLayout();
             }
 
             public void RefreshCards(IReadOnlyList<CardModel> cards)
             {
                 if (IsReleased) return;
+
                 while (_cards.Count > cards.Count)
                 {
                     _cards[^1].Dispose();
@@ -271,14 +241,13 @@ namespace STS2ShowPlayerHandCards.Utils
                         _cards.Add(mc);
                     }
 
-                Visible = cards.Count > 0;
+                RefreshLayout();
             }
 
             public void Cleanup()
             {
                 if (IsReleased) return;
                 IsReleased = true;
-                Resized -= OnResized;
                 foreach (var mc in _cards) mc.Dispose();
                 _cards.Clear();
                 _spacer?.QueueFree();
@@ -287,12 +256,6 @@ namespace STS2ShowPlayerHandCards.Utils
             }
         }
 
-        /// <summary>
-        ///     A full NCard scaled down inside a fixed-size wrapper.
-        ///     The Wrapper handles all mouse interaction; the NCard and its
-        ///     children are set to MouseFilter.Ignore so there is no
-        ///     mismatch between visual and interactive areas.
-        /// </summary>
         private sealed class MiniCard : IDisposable
         {
             private CardModel? _card;
@@ -330,8 +293,9 @@ namespace STS2ShowPlayerHandCards.Utils
 
             public void SetCard(CardModel card)
             {
-                if (_card == card) return;
                 _card = card;
+                Wrapper.CustomMinimumSize = HandCardDisplaySettings.GetScaledCardSize();
+                Wrapper.Size = HandCardDisplaySettings.GetScaledCardSize();
 
                 if (_nCard != null && GodotObject.IsInstanceValid(_nCard))
                 {
@@ -351,15 +315,15 @@ namespace STS2ShowPlayerHandCards.Utils
                     if (_nCard == null) return;
 
                     var scaledSize = HandCardDisplaySettings.GetScaledCardSize();
-
                     _nCard.PivotOffset = Vector2.Zero;
                     _nCard.Scale = Vector2.One * HandCardDisplaySettings.GetMiniCardScale();
                     _nCard.Position = scaledSize / 2f;
                     _nCard.MouseFilter = Control.MouseFilterEnum.Ignore;
                     Wrapper.AddChild(_nCard);
-                    if (HandCardDisplaySettings.ShouldHighlight(card))
+
+                    if (HandCardDisplaySettings.TryGetHighlightColor(card, out var color))
                     {
-                        _highlightOverlay = CreateHighlightOverlay();
+                        _highlightOverlay = CreateHighlightOverlay(color);
                         Wrapper.AddChild(_highlightOverlay);
                     }
 
@@ -377,7 +341,7 @@ namespace STS2ShowPlayerHandCards.Utils
                 }
             }
 
-            private static Control CreateHighlightOverlay()
+            private static Control CreateHighlightOverlay(Color color)
             {
                 var overlay = new Panel
                 {
@@ -387,7 +351,7 @@ namespace STS2ShowPlayerHandCards.Utils
                 overlay.AddThemeStyleboxOverride("panel", new StyleBoxFlat
                 {
                     DrawCenter = false,
-                    BorderColor = HandCardDisplaySettings.GetHighlightColor(),
+                    BorderColor = color,
                     BorderWidthLeft = 3,
                     BorderWidthTop = 3,
                     BorderWidthRight = 3,
@@ -413,8 +377,7 @@ namespace STS2ShowPlayerHandCards.Utils
                 if (_card == null || !GodotObject.IsInstanceValid(Wrapper)) return;
                 try
                 {
-                    var tipSet = NHoverTipSet.CreateAndShow(
-                        Wrapper, new CardHoverTip(_card), HoverTipAlignment.Right);
+                    var tipSet = NHoverTipSet.CreateAndShow(Wrapper, new CardHoverTip(_card), HoverTipAlignment.Right);
                     tipSet.SetFollowOwner();
                 }
                 catch (Exception ex)
@@ -432,7 +395,7 @@ namespace STS2ShowPlayerHandCards.Utils
                 }
                 catch
                 {
-                    /* ignored */
+                    // ignored
                 }
             }
         }

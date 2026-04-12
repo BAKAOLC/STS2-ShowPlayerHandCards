@@ -26,7 +26,10 @@ namespace STS2ShowPlayerHandCards.Data
                         CurrentDataVersion = ModSettings.CurrentDataVersion,
                         MinimumSupportedDataVersion = 1,
                         SchemaVersionProperty = "data_version",
-                    });
+                    },
+                    [
+                        new HighlightRulesV1ToV2Migration(),
+                    ]);
             }
         }
 

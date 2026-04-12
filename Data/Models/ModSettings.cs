@@ -3,25 +3,54 @@ using STS2ShowPlayerHandCards.Utils;
 
 namespace STS2ShowPlayerHandCards.Data.Models
 {
+    public enum HighlightMatchMode
+    {
+        Text,
+        Regex,
+        Template,
+    }
+
     public sealed class HighlightKeywordEntry
     {
         [JsonPropertyName("keyword")] public string Keyword { get; set; } = string.Empty;
     }
 
+    public sealed class HighlightRuleEntry
+    {
+        [JsonPropertyName("pattern")] public string Pattern { get; set; } = string.Empty;
+        [JsonPropertyName("color_hex")] public string ColorHex { get; set; } = string.Empty;
+        [JsonPropertyName("enabled")] public bool Enabled { get; set; } = true;
+        [JsonPropertyName("match_mode")] public HighlightMatchMode MatchMode { get; set; } = HighlightMatchMode.Text;
+        [JsonPropertyName("keywords")] public List<string> Keywords { get; set; } = [];
+        [JsonPropertyName("types")] public List<string> Types { get; set; } = [];
+        [JsonPropertyName("rarities")] public List<string> Rarities { get; set; } = [];
+        [JsonPropertyName("target_types")] public List<string> TargetTypes { get; set; } = [];
+        [JsonPropertyName("effect_terms")] public List<string> EffectTerms { get; set; } = [];
+        [JsonPropertyName("require_upgraded")] public bool? RequireUpgraded { get; set; }
+        [JsonPropertyName("require_playable")] public bool? RequirePlayable { get; set; }
+    }
+
     public class ModSettings
     {
-        public const int CurrentDataVersion = 1;
+        public const int CurrentDataVersion = 2;
+        public const double MinContentScale = 0.5d;
+        public const double MaxContentScale = 5.0d;
+        public const double MinPositionOffset = -200d;
+        public const double MaxPositionOffset = 200d;
 
         [JsonPropertyName("data_version")] public int DataVersion { get; set; } = CurrentDataVersion;
 
-        /// <summary>
-        ///     The key used to toggle hand card visibility.
-        ///     Stored as string for JSON serialization.
-        /// </summary>
-        [JsonPropertyName("toggle_key")]
-        public string ToggleKey { get; set; } = InputHandler.DefaultToggleBinding;
+        [JsonPropertyName("toggle_key")] public string ToggleKey { get; set; } = InputHandler.DefaultToggleBinding;
 
-        [JsonPropertyName("content_scale")] public float ContentScale { get; set; } = 1.0f;
+        [JsonPropertyName("content_scale")] public double ContentScale { get; set; } = 1.0d;
+
+        [JsonPropertyName("position_offset_x")]
+        public double PositionOffsetX { get; set; }
+
+        [JsonPropertyName("position_offset_y")]
+        public double PositionOffsetY { get; set; }
+
+        [JsonPropertyName("highlight_rules")] public List<HighlightRuleEntry> HighlightRules { get; set; } = [];
 
         [JsonPropertyName("highlight_keywords")]
         public List<HighlightKeywordEntry> HighlightKeywords { get; set; } = [];
