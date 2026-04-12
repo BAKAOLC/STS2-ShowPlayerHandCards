@@ -313,6 +313,7 @@ namespace STS2ShowPlayerHandCards.Utils
                 {
                     _nCard = NCard.Create(card);
                     if (_nCard == null) return;
+                    _nCard.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
 
                     var scaledSize = HandCardDisplaySettings.GetScaledCardSize();
                     _nCard.PivotOffset = Vector2.Zero;
