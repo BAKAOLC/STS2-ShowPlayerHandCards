@@ -161,6 +161,9 @@ namespace STS2ShowPlayerHandCards.Utils
         {
             private readonly List<MiniCard> _cards = [];
             private readonly NMultiplayerPlayerState? _playerState;
+            private Vector2 _dragStartMouse;
+            private Vector2 _dragStartOffset;
+            private bool _isDragging;
             private bool _isHidden;
             private Control? _spacer;
 
@@ -168,7 +171,7 @@ namespace STS2ShowPlayerHandCards.Utils
             {
                 _playerState = playerState;
                 Name = "HandCardDisplayContainer";
-                MouseFilter = MouseFilterEnum.Ignore;
+                MouseFilter = MouseFilterEnum.Pass;
                 AddThemeConstantOverride("separation", (int)HandCardDisplaySettings.GetCardSpacing());
             }
 
@@ -198,9 +201,44 @@ namespace STS2ShowPlayerHandCards.Utils
 
             public override void _Process(double delta)
             {
-                if (IsReleased || _spacer == null || !_spacer.IsInsideTree()) return;
-                GlobalPosition = _spacer.GlobalPosition + HandCardDisplaySettings.GetAutoOffset() +
-                                 HandCardDisplaySettings.GetUserOffset();
+                if (IsReleased || _playerState == null || _spacer == null || !_spacer.IsInsideTree()) return;
+                GlobalPosition = ResolveDisplayPosition();
+            }
+
+            public override void _GuiInput(InputEvent @event)
+            {
+                HandleDragInput(@event);
+                base._GuiInput(@event);
+            }
+
+            private void HandleDragInput(InputEvent @event)
+            {
+                if (!HandCardDisplaySettings.IsManualPositioningEnabled() || _playerState == null)
+                    return;
+
+                switch (@event)
+                {
+                    case InputEventMouseButton { ButtonIndex: MouseButton.Left } mouseButton:
+                        if (mouseButton.Pressed)
+                        {
+                            _isDragging = true;
+                            _dragStartMouse = mouseButton.GlobalPosition;
+                            _dragStartOffset = HandCardDisplaySettings.GetSlotOffset(GetSlotIndex());
+                            GetViewport().SetInputAsHandled();
+                        }
+                        else if (_isDragging)
+                        {
+                            _isDragging = false;
+                            GetViewport().SetInputAsHandled();
+                        }
+
+                        break;
+                    case InputEventMouseMotion mouseMotion when _isDragging:
+                        var deltaPosition = mouseMotion.GlobalPosition - _dragStartMouse;
+                        HandCardDisplaySettings.SetSlotOffset(GetSlotIndex(), _dragStartOffset + deltaPosition);
+                        GetViewport().SetInputAsHandled();
+                        break;
+                }
             }
 
             private void RefreshLayout()
@@ -209,8 +247,36 @@ namespace STS2ShowPlayerHandCards.Utils
                 var scaledSize = HandCardDisplaySettings.GetScaledCardSize();
                 var width = HandCardDisplaySettings.GetContentWidth(_cards.Count);
                 CustomMinimumSize = new(width, scaledSize.Y);
-                _spacer?.CustomMinimumSize = _isHidden ? Vector2.Zero : new(width, 0f);
+                _spacer?.CustomMinimumSize = !_isHidden && HandCardDisplaySettings.ShouldReserveOriginalWidth()
+                    ? new(width, 0f)
+                    : Vector2.Zero;
                 Visible = !_isHidden && _cards.Count > 0;
+            }
+
+            private Vector2 ResolveDisplayPosition()
+            {
+                if (_playerState == null || _spacer == null)
+                    return GlobalPosition;
+
+                var contentSize = new Vector2(HandCardDisplaySettings.GetContentWidth(_cards.Count),
+                    HandCardDisplaySettings.GetScaledCardSize().Y);
+                var anchorRect = new Rect2(_spacer.GlobalPosition, _spacer.Size);
+                if (anchorRect.Size == Vector2.Zero)
+                    anchorRect = new(_playerState.GetNode<Control>("TopInfoContainer").GlobalPosition,
+                        _playerState.GetNode<Control>("TopInfoContainer").Size);
+
+                var avoidRects = new List<Rect2> { anchorRect };
+                var viewportRect = GetViewport().GetVisibleRect();
+                var basePosition =
+                    HandCardDisplaySettings.ResolveAutoPosition(anchorRect, contentSize, avoidRects, viewportRect);
+                var slotOffset = HandCardDisplaySettings.GetSlotOffset(GetSlotIndex());
+                var userOffset = HandCardDisplaySettings.GetUserOffset();
+                return basePosition + userOffset + slotOffset;
+            }
+
+            private int GetSlotIndex()
+            {
+                return _playerState?.GetIndex() ?? -1;
             }
 
             public void SetHidden(bool hidden)
@@ -236,7 +302,7 @@ namespace STS2ShowPlayerHandCards.Utils
                     }
                     else
                     {
-                        var mc = new MiniCard(cards[i]);
+                        var mc = new MiniCard(cards[i], HandleDragInput);
                         AddChild(mc.Wrapper);
                         _cards.Add(mc);
                     }
@@ -258,12 +324,14 @@ namespace STS2ShowPlayerHandCards.Utils
 
         private sealed class MiniCard : IDisposable
         {
+            private readonly Action<InputEvent>? _dragInputHandler;
             private CardModel? _card;
             private Control? _highlightOverlay;
             private NCard? _nCard;
 
-            public MiniCard(CardModel card)
+            public MiniCard(CardModel card, Action<InputEvent>? dragInputHandler)
             {
+                _dragInputHandler = dragInputHandler;
                 Wrapper = new()
                 {
                     CustomMinimumSize = HandCardDisplaySettings.GetScaledCardSize(),
@@ -273,6 +341,7 @@ namespace STS2ShowPlayerHandCards.Utils
                 };
                 Wrapper.MouseEntered += OnMouseEntered;
                 Wrapper.MouseExited += OnMouseExited;
+                Wrapper.GuiInput += OnWrapperGuiInput;
                 SetCard(card);
             }
 
@@ -281,6 +350,8 @@ namespace STS2ShowPlayerHandCards.Utils
             public void Dispose()
             {
                 OnMouseExited();
+                if (GodotObject.IsInstanceValid(Wrapper))
+                    Wrapper.GuiInput -= OnWrapperGuiInput;
                 if (_nCard != null && GodotObject.IsInstanceValid(_nCard))
                 {
                     _nCard.QueueFree();
@@ -313,7 +384,6 @@ namespace STS2ShowPlayerHandCards.Utils
                 {
                     _nCard = NCard.Create(card);
                     if (_nCard == null) return;
-                    _nCard.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
 
                     var scaledSize = HandCardDisplaySettings.GetScaledCardSize();
                     _nCard.PivotOffset = Vector2.Zero;
@@ -332,6 +402,7 @@ namespace STS2ShowPlayerHandCards.Utils
                     {
                         if (_nCard == null || !GodotObject.IsInstanceValid(_nCard) || _card == null)
                             return;
+                        _nCard.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
                         ApplyMiniTeammateCardDescription(_nCard, _card);
                         PropagateMouseIgnore(_nCard);
                     }).CallDeferred();
@@ -340,6 +411,11 @@ namespace STS2ShowPlayerHandCards.Utils
                 {
                     Main.Logger.Error($"Failed to create mini card: {ex.Message}");
                 }
+            }
+
+            private void OnWrapperGuiInput(InputEvent @event)
+            {
+                _dragInputHandler?.Invoke(@event);
             }
 
             private static Control CreateHighlightOverlay(Color color)

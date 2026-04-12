@@ -15,6 +15,8 @@ namespace STS2ShowPlayerHandCards.Utils
         private const float BaseMiniCardScale = 0.065f;
         private const float BaseCardYOffset = 4f;
         private const float BaseCardSpacing = 1f;
+        private const float AutoGap = 8f;
+        private const float ExtraAvoidanceShift = 12f;
 
         public static float GetMiniCardScale()
         {
@@ -35,7 +37,7 @@ namespace STS2ShowPlayerHandCards.Utils
             return Mathf.Max(BaseCardSpacing, Mathf.Round(BaseCardSpacing * Mathf.Sqrt((float)scale)));
         }
 
-        public static Vector2 GetAutoOffset()
+        public static Vector2 GetLegacyAutoOffset()
         {
             var scaledSize = GetScaledCardSize();
             var baseHeight = NCard.defaultSize.Y * BaseMiniCardScale;
@@ -49,12 +51,75 @@ namespace STS2ShowPlayerHandCards.Utils
             return new((float)settings.PositionOffsetX, (float)settings.PositionOffsetY);
         }
 
+        public static bool IsManualPositioningEnabled()
+        {
+            return GetSettings().ManualPositioningEnabled;
+        }
+
+        public static bool ShouldReserveOriginalWidth()
+        {
+            return GetSettings().ReserveOriginalWidth;
+        }
+
+        public static Vector2 GetSlotOffset(int slotIndex)
+        {
+            var entry = GetSettings().SlotOffsets.FirstOrDefault(item => item.SlotIndex == slotIndex);
+            return entry == null ? Vector2.Zero : new((float)entry.OffsetX, (float)entry.OffsetY);
+        }
+
+        public static void SetSlotOffset(int slotIndex, Vector2 offset)
+        {
+            ModDataStore.Modify<ModSettings>(ModDataStore.SettingsKey, settings =>
+            {
+                var entry = settings.SlotOffsets.FirstOrDefault(item => item.SlotIndex == slotIndex);
+                if (entry == null)
+                {
+                    settings.SlotOffsets.Add(new()
+                    {
+                        SlotIndex = slotIndex,
+                        OffsetX = offset.X,
+                        OffsetY = offset.Y,
+                    });
+                    return;
+                }
+
+                entry.OffsetX = offset.X;
+                entry.OffsetY = offset.Y;
+            });
+            ModDataStore.Save(ModDataStore.SettingsKey);
+        }
+
+        public static void ClearSlotOffsets()
+        {
+            ModDataStore.Modify<ModSettings>(ModDataStore.SettingsKey, settings => settings.SlotOffsets.Clear());
+            ModDataStore.Save(ModDataStore.SettingsKey);
+        }
+
         public static float GetContentWidth(int count)
         {
             if (count <= 0)
                 return 0f;
             var cardWidth = GetScaledCardSize().X;
             return count * cardWidth + (count - 1) * GetCardSpacing();
+        }
+
+        public static Vector2 ResolveAutoPosition(Rect2 anchorRect, Vector2 contentSize,
+            IReadOnlyList<Rect2> avoidRects,
+            Rect2 viewportRect)
+        {
+            var preferredYOffset = GetLegacyAutoOffset().Y;
+            var candidates = new[]
+            {
+                new Vector2(anchorRect.End.X + AutoGap, anchorRect.Position.Y + preferredYOffset),
+                new Vector2(anchorRect.Position.X, anchorRect.End.Y + AutoGap),
+                new Vector2(anchorRect.Position.X, anchorRect.Position.Y - contentSize.Y - AutoGap),
+                new Vector2(anchorRect.Position.X - contentSize.X - AutoGap, anchorRect.Position.Y + preferredYOffset),
+                new Vector2(anchorRect.End.X + AutoGap, anchorRect.Position.Y + preferredYOffset + ExtraAvoidanceShift),
+            };
+
+            return candidates
+                .OrderBy(candidate => ScoreCandidate(new(candidate, contentSize), avoidRects, viewportRect))
+                .FirstOrDefault();
         }
 
         public static bool TryGetHighlightColor(CardModel card, out Color color)
@@ -95,6 +160,27 @@ namespace STS2ShowPlayerHandCards.Utils
             return TryParseHexColor(GetSettings().HighlightColorHex, out var parsed)
                 ? parsed
                 : new(1f, 215f / 255f, 64f / 255f);
+        }
+
+        private static float ScoreCandidate(Rect2 candidateRect, IReadOnlyList<Rect2> avoidRects, Rect2 viewportRect)
+        {
+            var penalty = 0f;
+            foreach (var avoidRect in avoidRects)
+            {
+                var overlap = candidateRect.Intersection(avoidRect);
+                penalty += overlap.Size.X * overlap.Size.Y;
+            }
+
+            if (!viewportRect.Encloses(candidateRect))
+            {
+                var overflowLeft = Mathf.Max(0f, viewportRect.Position.X - candidateRect.Position.X);
+                var overflowTop = Mathf.Max(0f, viewportRect.Position.Y - candidateRect.Position.Y);
+                var overflowRight = Mathf.Max(0f, candidateRect.End.X - viewportRect.End.X);
+                var overflowBottom = Mathf.Max(0f, candidateRect.End.Y - viewportRect.End.Y);
+                penalty += (overflowLeft + overflowTop + overflowRight + overflowBottom) * 1000f;
+            }
+
+            return penalty;
         }
 
         private static IEnumerable<HighlightRuleEntry> GetRules()

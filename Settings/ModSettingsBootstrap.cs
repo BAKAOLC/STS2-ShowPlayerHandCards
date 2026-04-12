@@ -62,6 +62,20 @@ namespace STS2ShowPlayerHandCards.Settings
                         settings => settings.PositionOffsetY,
                         (settings, value) => settings.PositionOffsetY = value),
                     () => 0d));
+                var manualPositioningBinding = new RefreshingBinding<bool>(ModSettingsBindings.WithDefault(
+                    ModSettingsBindings.Global<ModSettings, bool>(
+                        Const.ModId,
+                        ModDataStore.SettingsKey,
+                        settings => settings.ManualPositioningEnabled,
+                        (settings, value) => settings.ManualPositioningEnabled = value),
+                    () => false));
+                var reserveOriginalWidthBinding = new RefreshingBinding<bool>(ModSettingsBindings.WithDefault(
+                    ModSettingsBindings.Global<ModSettings, bool>(
+                        Const.ModId,
+                        ModDataStore.SettingsKey,
+                        settings => settings.ReserveOriginalWidth,
+                        (settings, value) => settings.ReserveOriginalWidth = value),
+                    () => true));
                 var ruleListBinding = new RefreshingBinding<List<HighlightRuleEntry>>(ModSettingsBindings.WithDefault(
                     ModSettingsBindings.Global<ModSettings, List<HighlightRuleEntry>>(
                         Const.ModId,
@@ -116,6 +130,26 @@ namespace STS2ShowPlayerHandCards.Settings
                             value => value.ToString("0"),
                             ModSettingsLocalization.T("offsetY.description",
                                 "Moves the hand-card row vertically after automatic anchor adjustment."))
+                        .AddToggle(
+                            "manual_positioning_enabled",
+                            ModSettingsLocalization.T("manualPositioning.label", "Enable manual positioning"),
+                            manualPositioningBinding,
+                            ModSettingsLocalization.T("manualPositioning.description",
+                                "Lets you drag each teammate hand row directly during combat and saves the offset by slot."))
+                        .AddToggle(
+                            "reserve_original_width",
+                            ModSettingsLocalization.T("reserveWidth.label", "Reserve original width"),
+                            reserveOriginalWidthBinding,
+                            ModSettingsLocalization.T("reserveWidth.description",
+                                "Keeps width reserved inside the original player info row. Turn this off for pure overlay positioning."))
+                        .AddButton(
+                            "reset_slot_positions",
+                            ModSettingsLocalization.T("resetSlotPositions.label", "Reset dragged positions"),
+                            ModSettingsLocalization.T("resetSlotPositions.button", "Reset"),
+                            () => HandCardDisplaySettings.ClearSlotOffsets(),
+                            ModSettingsButtonTone.Normal,
+                            ModSettingsLocalization.T("resetSlotPositions.description",
+                                "Clears all saved per-slot hand-row offsets."))
                         .AddList(
                             "highlight_rules",
                             ModSettingsLocalization.T("rules.label", "Highlight Rules"),
@@ -128,9 +162,9 @@ namespace STS2ShowPlayerHandCards.Settings
                             ModSettingsLocalization.T("rules.add", "Add Rule"),
                             ModSettingsLocalization.T("rules.description",
                                 "Each rule can use text, regex, or native template matching."),
-                            collapsibleItems: true,
-                            startItemsCollapsed: true,
-                            itemHeaderAccessoryFactory: CreateRuleHeaderAccessory)));
+                            true,
+                            true,
+                            CreateRuleHeaderAccessory)));
 
                 _initialized = true;
             }
@@ -242,10 +276,13 @@ namespace STS2ShowPlayerHandCards.Settings
             row.AddChild(rarityGroup);
             row.AddChild(targetGroup);
             var requirementRow = ModSettingsUiControlTheming.CreateCompactToggleRow(
-                ModSettingsUiControlTheming.CreateCompactToggleField(ModSettingsLocalization.Get("template.upgraded", "Require upgraded"), upgradedToggle),
-                ModSettingsUiControlTheming.CreateCompactToggleField(ModSettingsLocalization.Get("template.playable", "Require playable"), playableToggle));
+                ModSettingsUiControlTheming.CreateCompactToggleField(
+                    ModSettingsLocalization.Get("template.upgraded", "Require upgraded"), upgradedToggle),
+                ModSettingsUiControlTheming.CreateCompactToggleField(
+                    ModSettingsLocalization.Get("template.playable", "Require playable"), playableToggle));
             var colorRow = ModSettingsUiControlTheming.CreateCompactEditorRow(3,
-                ModSettingsUiControlTheming.CreateCompactEditorField(ModSettingsLocalization.Get("rule.color", "Rule Color"), colorPicker));
+                ModSettingsUiControlTheming.CreateCompactEditorField(
+                    ModSettingsLocalization.Get("rule.color", "Rule Color"), colorPicker));
 
             row.AddChild(effectsEdit);
             row.AddChild(requirementRow);

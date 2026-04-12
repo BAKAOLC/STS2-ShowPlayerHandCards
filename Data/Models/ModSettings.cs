@@ -30,9 +30,16 @@ namespace STS2ShowPlayerHandCards.Data.Models
         [JsonPropertyName("require_playable")] public bool? RequirePlayable { get; set; }
     }
 
+    public sealed class SlotPositionEntry
+    {
+        [JsonPropertyName("slot_index")] public int SlotIndex { get; set; }
+        [JsonPropertyName("offset_x")] public double OffsetX { get; set; }
+        [JsonPropertyName("offset_y")] public double OffsetY { get; set; }
+    }
+
     public class ModSettings
     {
-        public const int CurrentDataVersion = 2;
+        public const int CurrentDataVersion = 3;
         public const double MinContentScale = 0.5d;
         public const double MaxContentScale = 5.0d;
         public const double MinPositionOffset = -200d;
@@ -49,6 +56,14 @@ namespace STS2ShowPlayerHandCards.Data.Models
 
         [JsonPropertyName("position_offset_y")]
         public double PositionOffsetY { get; set; }
+
+        [JsonPropertyName("manual_positioning_enabled")]
+        public bool ManualPositioningEnabled { get; set; }
+
+        [JsonPropertyName("reserve_original_width")]
+        public bool ReserveOriginalWidth { get; set; } = true;
+
+        [JsonPropertyName("slot_offsets")] public List<SlotPositionEntry> SlotOffsets { get; set; } = [];
 
         [JsonPropertyName("highlight_rules")] public List<HighlightRuleEntry> HighlightRules { get; set; } = [];
 
