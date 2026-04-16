@@ -88,16 +88,35 @@ namespace STS2ShowPlayerHandCards.Utils
 
         private static ModifierKind GetModifierKind(Key key)
         {
-            var name = key.ToString().ToLowerInvariant();
-            if (name.Contains("ctrl") || name.Contains("control"))
+            return key switch
+            {
+                Key.Ctrl => ModifierKind.Ctrl,
+                Key.Shift => ModifierKind.Shift,
+                Key.Alt => ModifierKind.Alt,
+                Key.Meta => ModifierKind.Meta,
+                _ => MatchModifierByName(key),
+            };
+        }
+
+        private static ModifierKind MatchModifierByName(Key key)
+        {
+            var name = key.ToString().AsSpan();
+            if (ContainsIgnoreCase(name, "ctrl") || ContainsIgnoreCase(name, "control"))
                 return ModifierKind.Ctrl;
-            if (name.Contains("shift"))
+            if (ContainsIgnoreCase(name, "shift"))
                 return ModifierKind.Shift;
-            if (name.Contains("alt"))
+            if (ContainsIgnoreCase(name, "alt"))
                 return ModifierKind.Alt;
-            if (name.Contains("meta") || name.Contains("cmd") || name.Contains("command"))
+            if (ContainsIgnoreCase(name, "meta")
+                || ContainsIgnoreCase(name, "cmd")
+                || ContainsIgnoreCase(name, "command"))
                 return ModifierKind.Meta;
             return ModifierKind.None;
+        }
+
+        private static bool ContainsIgnoreCase(ReadOnlySpan<char> haystack, string needle)
+        {
+            return haystack.Contains(needle.AsSpan(), StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsSpecificModifierSide(Key key)

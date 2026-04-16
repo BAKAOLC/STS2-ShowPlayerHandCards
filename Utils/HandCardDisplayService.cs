@@ -48,7 +48,6 @@ namespace STS2ShowPlayerHandCards.Utils
         {
             if (_subscribed) return;
             _subscribed = true;
-            CombatManager.Instance.CombatSetUp += OnCombatSetUp;
             CombatManager.Instance.CombatEnded += _ => HideAll();
             CombatManager.Instance.TurnStarted += _ => RefreshAll();
         }
@@ -177,12 +176,6 @@ namespace STS2ShowPlayerHandCards.Utils
         {
             foreach (var c in Containers.Values) c.Cleanup();
             Containers.Clear();
-        }
-
-        private static void OnCombatSetUp(CombatState combatState)
-        {
-            SubscribeCurrentCombat();
-            RefreshAll();
         }
 
         private static void RefreshPlayer(NMultiplayerPlayerState ps)
