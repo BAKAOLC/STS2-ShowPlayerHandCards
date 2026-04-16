@@ -16,10 +16,12 @@ namespace STS2ShowPlayerHandCards.Utils
     public static partial class HandCardDisplayService
     {
         private static readonly Dictionary<NMultiplayerPlayerState, CardDisplayContainer> Containers = [];
-        private static readonly List<CardPile> SubscribedHands = [];
-        private static readonly Action HandContentsChangedHandler = static () => RefreshAll();
+        private static readonly Dictionary<CardPile, HandSubscription> SubscribedHands = [];
+        private static readonly HashSet<NMultiplayerPlayerState> PendingRefresh = [];
+        private static readonly Action FlushPendingRefreshHandler = static () => FlushPendingRefresh();
         private static bool _subscribed;
         private static bool _hidden;
+        private static bool _flushScheduled;
 
         public static bool IsHidden
         {
@@ -66,18 +68,70 @@ namespace STS2ShowPlayerHandCards.Utils
                 if (player == null || LocalContext.IsMe(player)) continue;
                 var pcs = player.PlayerCombatState;
                 if (pcs == null) continue;
-                var hand = pcs.Hand;
-                hand.ContentsChanged += HandContentsChangedHandler;
-                SubscribedHands.Add(hand);
+                SubscribeHand(pcs.Hand, ps);
             }
+        }
+
+        private static void SubscribeHand(CardPile hand, NMultiplayerPlayerState playerState)
+        {
+            if (SubscribedHands.ContainsKey(hand)) return;
+            Action handler = () => MarkPlayerDirty(playerState);
+            hand.ContentsChanged += handler;
+            SubscribedHands[hand] = new(playerState, handler);
         }
 
         private static void UnsubscribeCurrentCombat()
         {
-            foreach (var hand in SubscribedHands)
-                hand.ContentsChanged -= HandContentsChangedHandler;
+            foreach (var (hand, subscription) in SubscribedHands)
+                hand.ContentsChanged -= subscription.Handler;
             SubscribedHands.Clear();
+            PendingRefresh.Clear();
+            _flushScheduled = false;
         }
+
+        private static void MarkPlayerDirty(NMultiplayerPlayerState playerState)
+        {
+            PendingRefresh.Add(playerState);
+            ScheduleFlush();
+        }
+
+        private static void ScheduleFlush()
+        {
+            if (_flushScheduled) return;
+            _flushScheduled = true;
+            Callable.From(FlushPendingRefreshHandler).CallDeferred();
+        }
+
+        private static void FlushPendingRefresh()
+        {
+            _flushScheduled = false;
+
+            try
+            {
+                if (!CombatManager.Instance.IsInProgress)
+                {
+                    PendingRefresh.Clear();
+                    ClearDisplayContainersOnly();
+                    return;
+                }
+
+                foreach (var ps in PendingRefresh)
+                {
+                    if (!GodotObject.IsInstanceValid(ps)) continue;
+                    RefreshPlayer(ps);
+                }
+            }
+            catch (Exception ex)
+            {
+                Main.Logger.Error($"Failed to refresh hand card display: {ex.Message}");
+            }
+            finally
+            {
+                PendingRefresh.Clear();
+            }
+        }
+
+        private readonly record struct HandSubscription(NMultiplayerPlayerState PlayerState, Action Handler);
 
         private static void ApplyMiniTeammateCardDescription(NCard nCard, CardModel model)
         {
@@ -92,28 +146,25 @@ namespace STS2ShowPlayerHandCards.Utils
 
         public static void RefreshAll()
         {
-            try
+            if (!CombatManager.Instance.IsInProgress)
             {
-                if (!CombatManager.Instance.IsInProgress)
-                {
-                    ClearDisplayContainersOnly();
-                    return;
-                }
-
-                var run = NRun.Instance;
-                if (run?.GlobalUi?.MultiplayerPlayerContainer == null) return;
-                var container = run.GlobalUi.MultiplayerPlayerContainer;
-
-                for (var i = 0; i < container.GetChildCount(); i++)
-                {
-                    if (container.GetChild(i) is not NMultiplayerPlayerState ps) continue;
-                    RefreshPlayer(ps);
-                }
+                PendingRefresh.Clear();
+                _flushScheduled = false;
+                ClearDisplayContainersOnly();
+                return;
             }
-            catch (Exception ex)
+
+            var run = NRun.Instance;
+            if (run?.GlobalUi?.MultiplayerPlayerContainer == null) return;
+
+            var container = run.GlobalUi.MultiplayerPlayerContainer;
+            for (var i = 0; i < container.GetChildCount(); i++)
             {
-                Main.Logger.Error($"Failed to refresh hand card display: {ex.Message}");
+                if (container.GetChild(i) is not NMultiplayerPlayerState ps) continue;
+                PendingRefresh.Add(ps);
             }
+
+            ScheduleFlush();
         }
 
         public static void HideAll()
