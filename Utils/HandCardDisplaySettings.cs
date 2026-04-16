@@ -9,59 +9,47 @@ namespace STS2ShowPlayerHandCards.Utils
 {
     internal static class HandCardDisplaySettings
     {
-        private const float BaseMiniCardScale = 0.065f;
-        private const float BaseCardYOffset = 4f;
-        private const float BaseCardSpacing = 1f;
         private const float AutoGap = 8f;
         private const float ExtraAvoidanceShift = 12f;
 
         public static float GetMiniCardScale()
         {
-            var scale = Math.Clamp(GetSettings().ContentScale, ModSettings.MinContentScale,
-                ModSettings.MaxContentScale);
-            return BaseMiniCardScale * (float)scale;
+            return LayoutSettingsSnapshot.Current.MiniCardScale;
         }
 
         public static Vector2 GetScaledCardSize()
         {
-            return NCard.defaultSize * GetMiniCardScale();
+            return LayoutSettingsSnapshot.Current.ScaledCardSize;
         }
 
         public static float GetCardSpacing()
         {
-            var scale = Math.Clamp(GetSettings().ContentScale, ModSettings.MinContentScale,
-                ModSettings.MaxContentScale);
-            return Mathf.Max(BaseCardSpacing, Mathf.Round(BaseCardSpacing * Mathf.Sqrt((float)scale)));
+            return LayoutSettingsSnapshot.Current.CardSpacing;
         }
 
         public static Vector2 GetLegacyAutoOffset()
         {
-            var scaledSize = GetScaledCardSize();
-            var baseHeight = NCard.defaultSize.Y * BaseMiniCardScale;
-            var extraHeight = Mathf.Max(0f, scaledSize.Y - baseHeight);
-            return new(0f, BaseCardYOffset - extraHeight * 0.18f);
+            return LayoutSettingsSnapshot.Current.LegacyAutoOffset;
         }
 
         public static Vector2 GetUserOffset()
         {
-            var settings = GetSettings();
-            return new((float)settings.PositionOffsetX, (float)settings.PositionOffsetY);
+            return LayoutSettingsSnapshot.Current.UserOffset;
         }
 
         public static bool IsManualPositioningEnabled()
         {
-            return GetSettings().ManualPositioningEnabled;
+            return LayoutSettingsSnapshot.Current.ManualPositioningEnabled;
         }
 
         public static bool ShouldReserveOriginalWidth()
         {
-            return GetSettings().ReserveOriginalWidth;
+            return LayoutSettingsSnapshot.Current.ReserveOriginalWidth;
         }
 
         public static Vector2 GetSlotOffset(int slotIndex)
         {
-            var entry = GetSettings().SlotOffsets.FirstOrDefault(item => item.SlotIndex == slotIndex);
-            return entry == null ? Vector2.Zero : new((float)entry.OffsetX, (float)entry.OffsetY);
+            return LayoutSettingsSnapshot.Current.GetSlotOffset(slotIndex);
         }
 
         public static void SetSlotOffset(int slotIndex, Vector2 offset)
@@ -84,39 +72,47 @@ namespace STS2ShowPlayerHandCards.Utils
                 entry.OffsetY = offset.Y;
             });
             ModDataStore.Save(ModDataStore.SettingsKey);
+            LayoutSettingsSnapshot.Invalidate();
         }
 
         public static void ClearSlotOffsets()
         {
             ModDataStore.Modify<ModSettings>(ModDataStore.SettingsKey, settings => settings.SlotOffsets.Clear());
             ModDataStore.Save(ModDataStore.SettingsKey);
+            LayoutSettingsSnapshot.Invalidate();
         }
 
         public static float GetContentWidth(int count)
         {
-            if (count <= 0)
-                return 0f;
-            var cardWidth = GetScaledCardSize().X;
-            return count * cardWidth + (count - 1) * GetCardSpacing();
+            return LayoutSettingsSnapshot.Current.GetContentWidth(count);
         }
 
         public static Vector2 ResolveAutoPosition(Rect2 anchorRect, Vector2 contentSize,
-            IReadOnlyList<Rect2> avoidRects,
-            Rect2 viewportRect)
+            Rect2 avoidRect, Rect2 viewportRect)
         {
-            var preferredYOffset = GetLegacyAutoOffset().Y;
-            var candidates = new[]
-            {
-                new Vector2(anchorRect.End.X + AutoGap, anchorRect.Position.Y + preferredYOffset),
-                new Vector2(anchorRect.Position.X, anchorRect.End.Y + AutoGap),
-                new Vector2(anchorRect.Position.X, anchorRect.Position.Y - contentSize.Y - AutoGap),
-                new Vector2(anchorRect.Position.X - contentSize.X - AutoGap, anchorRect.Position.Y + preferredYOffset),
-                new Vector2(anchorRect.End.X + AutoGap, anchorRect.Position.Y + preferredYOffset + ExtraAvoidanceShift),
-            };
+            var preferredYOffset = LayoutSettingsSnapshot.Current.LegacyAutoOffset.Y;
 
-            return candidates
-                .OrderBy(candidate => ScoreCandidate(new(candidate, contentSize), avoidRects, viewportRect))
-                .FirstOrDefault();
+            var c0 = new Vector2(anchorRect.End.X + AutoGap, anchorRect.Position.Y + preferredYOffset);
+            var c1 = new Vector2(anchorRect.Position.X, anchorRect.End.Y + AutoGap);
+            var c2 = new Vector2(anchorRect.Position.X, anchorRect.Position.Y - contentSize.Y - AutoGap);
+            var c3 = new Vector2(anchorRect.Position.X - contentSize.X - AutoGap,
+                anchorRect.Position.Y + preferredYOffset);
+            var c4 = new Vector2(anchorRect.End.X + AutoGap,
+                anchorRect.Position.Y + preferredYOffset + ExtraAvoidanceShift);
+
+            var best = c0;
+            var bestScore = ScoreCandidate(c0, contentSize, avoidRect, viewportRect);
+
+            var score1 = ScoreCandidate(c1, contentSize, avoidRect, viewportRect);
+            if (score1 < bestScore) { best = c1; bestScore = score1; }
+            var score2 = ScoreCandidate(c2, contentSize, avoidRect, viewportRect);
+            if (score2 < bestScore) { best = c2; bestScore = score2; }
+            var score3 = ScoreCandidate(c3, contentSize, avoidRect, viewportRect);
+            if (score3 < bestScore) { best = c3; bestScore = score3; }
+            var score4 = ScoreCandidate(c4, contentSize, avoidRect, viewportRect);
+            if (score4 < bestScore) { best = c4; }
+
+            return best;
         }
 
         public static bool TryGetHighlightColor(CardModel card, out Color color)
@@ -148,14 +144,11 @@ namespace STS2ShowPlayerHandCards.Utils
                 : new(1f, 215f / 255f, 64f / 255f);
         }
 
-        private static float ScoreCandidate(Rect2 candidateRect, IReadOnlyList<Rect2> avoidRects, Rect2 viewportRect)
+        private static float ScoreCandidate(Vector2 candidate, Vector2 contentSize, Rect2 avoidRect, Rect2 viewportRect)
         {
-            var penalty = 0f;
-            foreach (var avoidRect in avoidRects)
-            {
-                var overlap = candidateRect.Intersection(avoidRect);
-                penalty += overlap.Size.X * overlap.Size.Y;
-            }
+            var candidateRect = new Rect2(candidate, contentSize);
+            var overlap = candidateRect.Intersection(avoidRect);
+            var penalty = overlap.Size.X * overlap.Size.Y;
 
             if (!viewportRect.Encloses(candidateRect))
             {

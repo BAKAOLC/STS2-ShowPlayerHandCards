@@ -218,6 +218,10 @@ namespace STS2ShowPlayerHandCards.Utils
             private bool _isDragging;
             private bool _isHidden;
             private Control? _spacer;
+            private Vector2 _lastAnchorPosition = new(float.NaN, float.NaN);
+            private Vector2 _lastAnchorSize;
+            private int _lastCardCount = -1;
+            private int _lastSnapshotVersion = -1;
 
             public CardDisplayContainer(NMultiplayerPlayerState playerState)
             {
@@ -254,6 +258,22 @@ namespace STS2ShowPlayerHandCards.Utils
             public override void _Process(double delta)
             {
                 if (IsReleased || _playerState == null || _spacer == null || !_spacer.IsInsideTree()) return;
+
+                var anchorPosition = _spacer.GlobalPosition;
+                var anchorSize = _spacer.Size;
+                var snapshotVersion = LayoutSettingsSnapshot.Current.Version;
+
+                if (!_isDragging
+                    && anchorPosition == _lastAnchorPosition
+                    && anchorSize == _lastAnchorSize
+                    && _cards.Count == _lastCardCount
+                    && snapshotVersion == _lastSnapshotVersion)
+                    return;
+
+                _lastAnchorPosition = anchorPosition;
+                _lastAnchorSize = anchorSize;
+                _lastCardCount = _cards.Count;
+                _lastSnapshotVersion = snapshotVersion;
                 GlobalPosition = ResolveDisplayPosition();
             }
 
@@ -295,11 +315,11 @@ namespace STS2ShowPlayerHandCards.Utils
 
             private void RefreshLayout()
             {
-                AddThemeConstantOverride("separation", (int)HandCardDisplaySettings.GetCardSpacing());
-                var scaledSize = HandCardDisplaySettings.GetScaledCardSize();
-                var width = HandCardDisplaySettings.GetContentWidth(_cards.Count);
-                CustomMinimumSize = new(width, scaledSize.Y);
-                _spacer?.CustomMinimumSize = !_isHidden && HandCardDisplaySettings.ShouldReserveOriginalWidth()
+                var snapshot = LayoutSettingsSnapshot.Current;
+                AddThemeConstantOverride("separation", (int)snapshot.CardSpacing);
+                var width = snapshot.GetContentWidth(_cards.Count);
+                CustomMinimumSize = new(width, snapshot.ScaledCardSize.Y);
+                _spacer?.CustomMinimumSize = !_isHidden && snapshot.ReserveOriginalWidth
                     ? new(width, 0f)
                     : Vector2.Zero;
                 Visible = !_isHidden && _cards.Count > 0;
@@ -310,20 +330,20 @@ namespace STS2ShowPlayerHandCards.Utils
                 if (_playerState == null || _spacer == null)
                     return GlobalPosition;
 
-                var contentSize = new Vector2(HandCardDisplaySettings.GetContentWidth(_cards.Count),
-                    HandCardDisplaySettings.GetScaledCardSize().Y);
+                var snapshot = LayoutSettingsSnapshot.Current;
+                var contentSize = new Vector2(snapshot.GetContentWidth(_cards.Count),
+                    snapshot.ScaledCardSize.Y);
                 var anchorRect = new Rect2(_spacer.GlobalPosition, _spacer.Size);
                 if (anchorRect.Size == Vector2.Zero)
-                    anchorRect = new(_playerState.GetNode<Control>("TopInfoContainer").GlobalPosition,
-                        _playerState.GetNode<Control>("TopInfoContainer").Size);
+                {
+                    var topContainer = _playerState.GetNode<Control>("TopInfoContainer");
+                    anchorRect = new(topContainer.GlobalPosition, topContainer.Size);
+                }
 
-                var avoidRects = new List<Rect2> { anchorRect };
                 var viewportRect = GetViewport().GetVisibleRect();
                 var basePosition =
-                    HandCardDisplaySettings.ResolveAutoPosition(anchorRect, contentSize, avoidRects, viewportRect);
-                var slotOffset = HandCardDisplaySettings.GetSlotOffset(GetSlotIndex());
-                var userOffset = HandCardDisplaySettings.GetUserOffset();
-                return basePosition + userOffset + slotOffset;
+                    HandCardDisplaySettings.ResolveAutoPosition(anchorRect, contentSize, anchorRect, viewportRect);
+                return basePosition + snapshot.UserOffset + snapshot.GetSlotOffset(GetSlotIndex());
             }
 
             private int GetSlotIndex()
