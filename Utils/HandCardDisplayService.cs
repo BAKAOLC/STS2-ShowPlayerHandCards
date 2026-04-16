@@ -3,6 +3,7 @@ using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes;
@@ -352,11 +353,9 @@ namespace STS2ShowPlayerHandCards.Utils
                 OnMouseExited();
                 if (GodotObject.IsInstanceValid(Wrapper))
                     Wrapper.GuiInput -= OnWrapperGuiInput;
-                if (_nCard != null && GodotObject.IsInstanceValid(_nCard))
-                {
-                    _nCard.QueueFree();
-                    _nCard = null;
-                }
+
+                ReleaseNCardToPool();
+                ReleaseHighlightOverlay();
 
                 if (GodotObject.IsInstanceValid(Wrapper))
                     Wrapper.QueueFree();
@@ -365,52 +364,91 @@ namespace STS2ShowPlayerHandCards.Utils
             public void SetCard(CardModel card)
             {
                 _card = card;
-                Wrapper.CustomMinimumSize = HandCardDisplaySettings.GetScaledCardSize();
-                Wrapper.Size = HandCardDisplaySettings.GetScaledCardSize();
+                var scaledSize = HandCardDisplaySettings.GetScaledCardSize();
+                Wrapper.CustomMinimumSize = scaledSize;
+                Wrapper.Size = scaledSize;
 
-                if (_nCard != null && GodotObject.IsInstanceValid(_nCard))
+                try
                 {
-                    _nCard.QueueFree();
-                    _nCard = null;
+                    if (!TryReuseNCard(card, scaledSize))
+                        RebuildNCard(card, scaledSize);
+
+                    UpdateHighlightOverlay(card);
+
+                    Callable.From(ApplyDeferredCardVisuals).CallDeferred();
+                }
+                catch (Exception ex)
+                {
+                    Main.Logger.Error($"Failed to set mini card: {ex.Message}");
+                }
+            }
+
+            private bool TryReuseNCard(CardModel card, Vector2 scaledSize)
+            {
+                if (_nCard == null || !GodotObject.IsInstanceValid(_nCard))
+                    return false;
+
+                _nCard.Scale = Vector2.One * HandCardDisplaySettings.GetMiniCardScale();
+                _nCard.Position = scaledSize / 2f;
+                _nCard.Model = card;
+                return true;
+            }
+
+            private void RebuildNCard(CardModel card, Vector2 scaledSize)
+            {
+                ReleaseNCardToPool();
+
+                _nCard = NCard.Create(card);
+                if (_nCard == null) return;
+
+                _nCard.PivotOffset = Vector2.Zero;
+                _nCard.Scale = Vector2.One * HandCardDisplaySettings.GetMiniCardScale();
+                _nCard.Position = scaledSize / 2f;
+                _nCard.MouseFilter = Control.MouseFilterEnum.Ignore;
+                Wrapper.AddChild(_nCard);
+            }
+
+            private void ApplyDeferredCardVisuals()
+            {
+                if (_nCard == null || !GodotObject.IsInstanceValid(_nCard) || _card == null)
+                    return;
+                _nCard.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+                ApplyMiniTeammateCardDescription(_nCard, _card);
+                PropagateMouseIgnore(_nCard);
+            }
+
+            private void UpdateHighlightOverlay(CardModel card)
+            {
+                if (!HandCardDisplaySettings.TryGetHighlightColor(card, out var color))
+                {
+                    ReleaseHighlightOverlay();
+                    return;
                 }
 
                 if (_highlightOverlay != null && GodotObject.IsInstanceValid(_highlightOverlay))
                 {
+                    SetOverlayBorderColor(_highlightOverlay, color);
+                    return;
+                }
+
+                _highlightOverlay = CreateHighlightOverlay(color);
+                Wrapper.AddChild(_highlightOverlay);
+            }
+
+            private void ReleaseNCardToPool()
+            {
+                if (_nCard == null) return;
+                if (GodotObject.IsInstanceValid(_nCard))
+                    _nCard.QueueFreeSafely();
+                _nCard = null;
+            }
+
+            private void ReleaseHighlightOverlay()
+            {
+                if (_highlightOverlay == null) return;
+                if (GodotObject.IsInstanceValid(_highlightOverlay))
                     _highlightOverlay.QueueFree();
-                    _highlightOverlay = null;
-                }
-
-                try
-                {
-                    _nCard = NCard.Create(card);
-                    if (_nCard == null) return;
-
-                    var scaledSize = HandCardDisplaySettings.GetScaledCardSize();
-                    _nCard.PivotOffset = Vector2.Zero;
-                    _nCard.Scale = Vector2.One * HandCardDisplaySettings.GetMiniCardScale();
-                    _nCard.Position = scaledSize / 2f;
-                    _nCard.MouseFilter = Control.MouseFilterEnum.Ignore;
-                    Wrapper.AddChild(_nCard);
-
-                    if (HandCardDisplaySettings.TryGetHighlightColor(card, out var color))
-                    {
-                        _highlightOverlay = CreateHighlightOverlay(color);
-                        Wrapper.AddChild(_highlightOverlay);
-                    }
-
-                    Callable.From(() =>
-                    {
-                        if (_nCard == null || !GodotObject.IsInstanceValid(_nCard) || _card == null)
-                            return;
-                        _nCard.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
-                        ApplyMiniTeammateCardDescription(_nCard, _card);
-                        PropagateMouseIgnore(_nCard);
-                    }).CallDeferred();
-                }
-                catch (Exception ex)
-                {
-                    Main.Logger.Error($"Failed to create mini card: {ex.Message}");
-                }
+                _highlightOverlay = null;
             }
 
             private void OnWrapperGuiInput(InputEvent @event)
@@ -439,6 +477,14 @@ namespace STS2ShowPlayerHandCards.Utils
                     CornerRadiusBottomRight = 8,
                 });
                 return overlay;
+            }
+
+            private static void SetOverlayBorderColor(Control overlay, Color color)
+            {
+                if (overlay.GetThemeStylebox("panel") is not StyleBoxFlat style)
+                    return;
+                if (style.BorderColor == color) return;
+                style.BorderColor = color;
             }
 
             private static void PropagateMouseIgnore(Control node)
