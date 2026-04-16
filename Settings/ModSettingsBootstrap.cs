@@ -539,6 +539,7 @@ namespace STS2ShowPlayerHandCards.Settings
             public void Write(T value)
             {
                 inner.Write(value);
+                HighlightEvaluator.InvalidateRules();
                 HandCardDisplayService.RefreshAll();
             }
 

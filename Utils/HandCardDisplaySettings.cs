@@ -1,10 +1,7 @@
 using System.Text.RegularExpressions;
 using Godot;
-using MegaCrit.Sts2.Core.Helpers;
-using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
-using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using STS2ShowPlayerHandCards.Data;
 using STS2ShowPlayerHandCards.Data.Models;
 
@@ -124,18 +121,7 @@ namespace STS2ShowPlayerHandCards.Utils
 
         public static bool TryGetHighlightColor(CardModel card, out Color color)
         {
-            foreach (var rule in GetRules())
-            {
-                var validation = ValidateRule(rule);
-                if (!validation.IsValid)
-                    continue;
-                if (!MatchesRule(rule, card)) continue;
-                color = GetRuleColor(rule.ColorHex);
-                return true;
-            }
-
-            color = default;
-            return false;
+            return HighlightEvaluator.TryGet(card, out color);
         }
 
         public static RuleValidationResult ValidateRule(HighlightRuleEntry rule)
@@ -183,50 +169,6 @@ namespace STS2ShowPlayerHandCards.Utils
             return penalty;
         }
 
-        private static IEnumerable<HighlightRuleEntry> GetRules()
-        {
-            return GetSettings().HighlightRules
-                .Where(rule => rule.Enabled);
-        }
-
-        private static bool MatchesRule(HighlightRuleEntry rule, CardModel card)
-        {
-            return rule.MatchMode switch
-            {
-                HighlightMatchMode.Regex => GetNormalizedCandidates(card).Any(text =>
-                    Regex.IsMatch(text, rule.Pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)),
-                HighlightMatchMode.Template => MatchesTemplateRule(rule, card),
-                _ => GetNormalizedCandidates(card).Any(text =>
-                    text.Contains(NormalizeForMatch(rule.Pattern), StringComparison.OrdinalIgnoreCase)),
-            };
-        }
-
-        private static bool MatchesTemplateRule(HighlightRuleEntry rule, CardModel card)
-        {
-            if (rule.Keywords.Count > 0 && !rule.Keywords.All(required =>
-                    card.CanonicalKeywords.Any(keyword =>
-                        string.Equals(keyword.ToString(), required, StringComparison.OrdinalIgnoreCase))))
-                return false;
-            if (rule.Types.Count > 0 && !rule.Types.Any(type =>
-                    string.Equals(type, card.Type.ToString(), StringComparison.OrdinalIgnoreCase)))
-                return false;
-            if (rule.Rarities.Count > 0 && !rule.Rarities.Any(rarity =>
-                    string.Equals(rarity, card.Rarity.ToString(), StringComparison.OrdinalIgnoreCase)))
-                return false;
-            if (rule.TargetTypes.Count > 0 && !rule.TargetTypes.Any(target =>
-                    string.Equals(target, card.TargetType.ToString(), StringComparison.OrdinalIgnoreCase)))
-                return false;
-            if (rule.RequireUpgraded.HasValue && card.IsUpgraded != rule.RequireUpgraded.Value)
-                return false;
-            if (rule.RequirePlayable.HasValue && card.CanPlay() != rule.RequirePlayable.Value)
-                return false;
-            if (rule.EffectTerms.Count <= 0) return true;
-            var candidates = GetNormalizedCandidates(card).ToArray();
-            return rule.EffectTerms.All(term =>
-                candidates.Any(text =>
-                    text.Contains(NormalizeForMatch(term), StringComparison.OrdinalIgnoreCase)));
-        }
-
         private static RuleValidationResult ValidateRegex(string pattern)
         {
             if (string.IsNullOrWhiteSpace(pattern))
@@ -250,30 +192,6 @@ namespace STS2ShowPlayerHandCards.Utils
             return hasCondition
                 ? RuleValidationResult.Valid()
                 : RuleValidationResult.Invalid("rule.validation.template_required");
-        }
-
-        private static IEnumerable<string> GetNormalizedCandidates(CardModel card)
-        {
-            return card.CanonicalKeywords.Select(keyword => keyword.ToString())
-                .Concat(card.HoverTips.SelectMany(GetTexts))
-                .Select(NormalizeForMatch)
-                .Where(text => !string.IsNullOrWhiteSpace(text));
-        }
-
-        private static string NormalizeForMatch(string text)
-        {
-            var withoutBbCode = text.StripBbCode();
-            var withoutHtml = NSearchBar.RemoveHtmlTags(withoutBbCode);
-            return NSearchBar.Normalize(withoutHtml);
-        }
-
-        private static IEnumerable<string> GetTexts(IHoverTip hoverTip)
-        {
-            if (hoverTip is not HoverTip concrete) yield break;
-            if (!string.IsNullOrWhiteSpace(concrete.Title))
-                yield return concrete.Title;
-            if (!string.IsNullOrWhiteSpace(concrete.Description))
-                yield return concrete.Description;
         }
 
         private static ModSettings GetSettings()
