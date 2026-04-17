@@ -3,6 +3,7 @@ using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes;
@@ -15,10 +16,12 @@ namespace STS2ShowPlayerHandCards.Utils
     public static partial class HandCardDisplayService
     {
         private static readonly Dictionary<NMultiplayerPlayerState, CardDisplayContainer> Containers = [];
-        private static readonly List<CardPile> SubscribedHands = [];
-        private static readonly Action HandContentsChangedHandler = static () => RefreshAll();
+        private static readonly Dictionary<CardPile, HandSubscription> SubscribedHands = [];
+        private static readonly HashSet<NMultiplayerPlayerState> PendingRefresh = [];
+        private static readonly Action FlushPendingRefreshHandler = static () => FlushPendingRefresh();
         private static bool _subscribed;
         private static bool _hidden;
+        private static bool _flushScheduled;
 
         public static bool IsHidden
         {
@@ -45,7 +48,6 @@ namespace STS2ShowPlayerHandCards.Utils
         {
             if (_subscribed) return;
             _subscribed = true;
-            CombatManager.Instance.CombatSetUp += OnCombatSetUp;
             CombatManager.Instance.CombatEnded += _ => HideAll();
             CombatManager.Instance.TurnStarted += _ => RefreshAll();
         }
@@ -65,18 +67,70 @@ namespace STS2ShowPlayerHandCards.Utils
                 if (player == null || LocalContext.IsMe(player)) continue;
                 var pcs = player.PlayerCombatState;
                 if (pcs == null) continue;
-                var hand = pcs.Hand;
-                hand.ContentsChanged += HandContentsChangedHandler;
-                SubscribedHands.Add(hand);
+                SubscribeHand(pcs.Hand, ps);
             }
+        }
+
+        private static void SubscribeHand(CardPile hand, NMultiplayerPlayerState playerState)
+        {
+            if (SubscribedHands.ContainsKey(hand)) return;
+            Action handler = () => MarkPlayerDirty(playerState);
+            hand.ContentsChanged += handler;
+            SubscribedHands[hand] = new(playerState, handler);
         }
 
         private static void UnsubscribeCurrentCombat()
         {
-            foreach (var hand in SubscribedHands)
-                hand.ContentsChanged -= HandContentsChangedHandler;
+            foreach (var (hand, subscription) in SubscribedHands)
+                hand.ContentsChanged -= subscription.Handler;
             SubscribedHands.Clear();
+            PendingRefresh.Clear();
+            _flushScheduled = false;
         }
+
+        private static void MarkPlayerDirty(NMultiplayerPlayerState playerState)
+        {
+            PendingRefresh.Add(playerState);
+            ScheduleFlush();
+        }
+
+        private static void ScheduleFlush()
+        {
+            if (_flushScheduled) return;
+            _flushScheduled = true;
+            Callable.From(FlushPendingRefreshHandler).CallDeferred();
+        }
+
+        private static void FlushPendingRefresh()
+        {
+            _flushScheduled = false;
+
+            try
+            {
+                if (!CombatManager.Instance.IsInProgress)
+                {
+                    PendingRefresh.Clear();
+                    ClearDisplayContainersOnly();
+                    return;
+                }
+
+                foreach (var ps in PendingRefresh)
+                {
+                    if (!GodotObject.IsInstanceValid(ps)) continue;
+                    RefreshPlayer(ps);
+                }
+            }
+            catch (Exception ex)
+            {
+                Main.Logger.Error($"Failed to refresh hand card display: {ex.Message}");
+            }
+            finally
+            {
+                PendingRefresh.Clear();
+            }
+        }
+
+        private readonly record struct HandSubscription(NMultiplayerPlayerState PlayerState, Action Handler);
 
         private static void ApplyMiniTeammateCardDescription(NCard nCard, CardModel model)
         {
@@ -91,28 +145,25 @@ namespace STS2ShowPlayerHandCards.Utils
 
         public static void RefreshAll()
         {
-            try
+            if (!CombatManager.Instance.IsInProgress)
             {
-                if (!CombatManager.Instance.IsInProgress)
-                {
-                    ClearDisplayContainersOnly();
-                    return;
-                }
-
-                var run = NRun.Instance;
-                if (run?.GlobalUi?.MultiplayerPlayerContainer == null) return;
-                var container = run.GlobalUi.MultiplayerPlayerContainer;
-
-                for (var i = 0; i < container.GetChildCount(); i++)
-                {
-                    if (container.GetChild(i) is not NMultiplayerPlayerState ps) continue;
-                    RefreshPlayer(ps);
-                }
+                PendingRefresh.Clear();
+                _flushScheduled = false;
+                ClearDisplayContainersOnly();
+                return;
             }
-            catch (Exception ex)
+
+            var run = NRun.Instance;
+            if (run?.GlobalUi?.MultiplayerPlayerContainer == null) return;
+
+            var container = run.GlobalUi.MultiplayerPlayerContainer;
+            for (var i = 0; i < container.GetChildCount(); i++)
             {
-                Main.Logger.Error($"Failed to refresh hand card display: {ex.Message}");
+                if (container.GetChild(i) is not NMultiplayerPlayerState ps) continue;
+                PendingRefresh.Add(ps);
             }
+
+            ScheduleFlush();
         }
 
         public static void HideAll()
@@ -125,12 +176,6 @@ namespace STS2ShowPlayerHandCards.Utils
         {
             foreach (var c in Containers.Values) c.Cleanup();
             Containers.Clear();
-        }
-
-        private static void OnCombatSetUp(CombatState combatState)
-        {
-            SubscribeCurrentCombat();
-            RefreshAll();
         }
 
         private static void RefreshPlayer(NMultiplayerPlayerState ps)
@@ -166,6 +211,10 @@ namespace STS2ShowPlayerHandCards.Utils
             private bool _isDragging;
             private bool _isHidden;
             private Control? _spacer;
+            private Vector2 _lastAnchorPosition = new(float.NaN, float.NaN);
+            private Vector2 _lastAnchorSize;
+            private int _lastCardCount = -1;
+            private int _lastSnapshotVersion = -1;
 
             public CardDisplayContainer(NMultiplayerPlayerState playerState)
             {
@@ -202,6 +251,22 @@ namespace STS2ShowPlayerHandCards.Utils
             public override void _Process(double delta)
             {
                 if (IsReleased || _playerState == null || _spacer == null || !_spacer.IsInsideTree()) return;
+
+                var anchorPosition = _spacer.GlobalPosition;
+                var anchorSize = _spacer.Size;
+                var snapshotVersion = LayoutSettingsSnapshot.Current.Version;
+
+                if (!_isDragging
+                    && anchorPosition == _lastAnchorPosition
+                    && anchorSize == _lastAnchorSize
+                    && _cards.Count == _lastCardCount
+                    && snapshotVersion == _lastSnapshotVersion)
+                    return;
+
+                _lastAnchorPosition = anchorPosition;
+                _lastAnchorSize = anchorSize;
+                _lastCardCount = _cards.Count;
+                _lastSnapshotVersion = snapshotVersion;
                 GlobalPosition = ResolveDisplayPosition();
             }
 
@@ -243,11 +308,11 @@ namespace STS2ShowPlayerHandCards.Utils
 
             private void RefreshLayout()
             {
-                AddThemeConstantOverride("separation", (int)HandCardDisplaySettings.GetCardSpacing());
-                var scaledSize = HandCardDisplaySettings.GetScaledCardSize();
-                var width = HandCardDisplaySettings.GetContentWidth(_cards.Count);
-                CustomMinimumSize = new(width, scaledSize.Y);
-                _spacer?.CustomMinimumSize = !_isHidden && HandCardDisplaySettings.ShouldReserveOriginalWidth()
+                var snapshot = LayoutSettingsSnapshot.Current;
+                AddThemeConstantOverride("separation", (int)snapshot.CardSpacing);
+                var width = snapshot.GetContentWidth(_cards.Count);
+                CustomMinimumSize = new(width, snapshot.ScaledCardSize.Y);
+                _spacer?.CustomMinimumSize = !_isHidden && snapshot.ReserveOriginalWidth
                     ? new(width, 0f)
                     : Vector2.Zero;
                 Visible = !_isHidden && _cards.Count > 0;
@@ -258,20 +323,20 @@ namespace STS2ShowPlayerHandCards.Utils
                 if (_playerState == null || _spacer == null)
                     return GlobalPosition;
 
-                var contentSize = new Vector2(HandCardDisplaySettings.GetContentWidth(_cards.Count),
-                    HandCardDisplaySettings.GetScaledCardSize().Y);
+                var snapshot = LayoutSettingsSnapshot.Current;
+                var contentSize = new Vector2(snapshot.GetContentWidth(_cards.Count),
+                    snapshot.ScaledCardSize.Y);
                 var anchorRect = new Rect2(_spacer.GlobalPosition, _spacer.Size);
                 if (anchorRect.Size == Vector2.Zero)
-                    anchorRect = new(_playerState.GetNode<Control>("TopInfoContainer").GlobalPosition,
-                        _playerState.GetNode<Control>("TopInfoContainer").Size);
+                {
+                    var topContainer = _playerState.GetNode<Control>("TopInfoContainer");
+                    anchorRect = new(topContainer.GlobalPosition, topContainer.Size);
+                }
 
-                var avoidRects = new List<Rect2> { anchorRect };
                 var viewportRect = GetViewport().GetVisibleRect();
                 var basePosition =
-                    HandCardDisplaySettings.ResolveAutoPosition(anchorRect, contentSize, avoidRects, viewportRect);
-                var slotOffset = HandCardDisplaySettings.GetSlotOffset(GetSlotIndex());
-                var userOffset = HandCardDisplaySettings.GetUserOffset();
-                return basePosition + userOffset + slotOffset;
+                    HandCardDisplaySettings.ResolveAutoPosition(anchorRect, contentSize, anchorRect, viewportRect);
+                return basePosition + snapshot.UserOffset + snapshot.GetSlotOffset(GetSlotIndex());
             }
 
             private int GetSlotIndex()
@@ -352,11 +417,9 @@ namespace STS2ShowPlayerHandCards.Utils
                 OnMouseExited();
                 if (GodotObject.IsInstanceValid(Wrapper))
                     Wrapper.GuiInput -= OnWrapperGuiInput;
-                if (_nCard != null && GodotObject.IsInstanceValid(_nCard))
-                {
-                    _nCard.QueueFree();
-                    _nCard = null;
-                }
+
+                ReleaseNCardToPool();
+                ReleaseHighlightOverlay();
 
                 if (GodotObject.IsInstanceValid(Wrapper))
                     Wrapper.QueueFree();
@@ -365,52 +428,91 @@ namespace STS2ShowPlayerHandCards.Utils
             public void SetCard(CardModel card)
             {
                 _card = card;
-                Wrapper.CustomMinimumSize = HandCardDisplaySettings.GetScaledCardSize();
-                Wrapper.Size = HandCardDisplaySettings.GetScaledCardSize();
+                var scaledSize = HandCardDisplaySettings.GetScaledCardSize();
+                Wrapper.CustomMinimumSize = scaledSize;
+                Wrapper.Size = scaledSize;
 
-                if (_nCard != null && GodotObject.IsInstanceValid(_nCard))
+                try
                 {
-                    _nCard.QueueFree();
-                    _nCard = null;
+                    if (!TryReuseNCard(card, scaledSize))
+                        RebuildNCard(card, scaledSize);
+
+                    UpdateHighlightOverlay(card);
+
+                    Callable.From(ApplyDeferredCardVisuals).CallDeferred();
+                }
+                catch (Exception ex)
+                {
+                    Main.Logger.Error($"Failed to set mini card: {ex.Message}");
+                }
+            }
+
+            private bool TryReuseNCard(CardModel card, Vector2 scaledSize)
+            {
+                if (_nCard == null || !GodotObject.IsInstanceValid(_nCard))
+                    return false;
+
+                _nCard.Scale = Vector2.One * HandCardDisplaySettings.GetMiniCardScale();
+                _nCard.Position = scaledSize / 2f;
+                _nCard.Model = card;
+                return true;
+            }
+
+            private void RebuildNCard(CardModel card, Vector2 scaledSize)
+            {
+                ReleaseNCardToPool();
+
+                _nCard = NCard.Create(card);
+                if (_nCard == null) return;
+
+                _nCard.PivotOffset = Vector2.Zero;
+                _nCard.Scale = Vector2.One * HandCardDisplaySettings.GetMiniCardScale();
+                _nCard.Position = scaledSize / 2f;
+                _nCard.MouseFilter = Control.MouseFilterEnum.Ignore;
+                Wrapper.AddChild(_nCard);
+            }
+
+            private void ApplyDeferredCardVisuals()
+            {
+                if (_nCard == null || !GodotObject.IsInstanceValid(_nCard) || _card == null)
+                    return;
+                _nCard.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+                ApplyMiniTeammateCardDescription(_nCard, _card);
+                PropagateMouseIgnore(_nCard);
+            }
+
+            private void UpdateHighlightOverlay(CardModel card)
+            {
+                if (!HandCardDisplaySettings.TryGetHighlightColor(card, out var color))
+                {
+                    ReleaseHighlightOverlay();
+                    return;
                 }
 
                 if (_highlightOverlay != null && GodotObject.IsInstanceValid(_highlightOverlay))
                 {
+                    SetOverlayBorderColor(_highlightOverlay, color);
+                    return;
+                }
+
+                _highlightOverlay = CreateHighlightOverlay(color);
+                Wrapper.AddChild(_highlightOverlay);
+            }
+
+            private void ReleaseNCardToPool()
+            {
+                if (_nCard == null) return;
+                if (GodotObject.IsInstanceValid(_nCard))
+                    _nCard.QueueFreeSafely();
+                _nCard = null;
+            }
+
+            private void ReleaseHighlightOverlay()
+            {
+                if (_highlightOverlay == null) return;
+                if (GodotObject.IsInstanceValid(_highlightOverlay))
                     _highlightOverlay.QueueFree();
-                    _highlightOverlay = null;
-                }
-
-                try
-                {
-                    _nCard = NCard.Create(card);
-                    if (_nCard == null) return;
-
-                    var scaledSize = HandCardDisplaySettings.GetScaledCardSize();
-                    _nCard.PivotOffset = Vector2.Zero;
-                    _nCard.Scale = Vector2.One * HandCardDisplaySettings.GetMiniCardScale();
-                    _nCard.Position = scaledSize / 2f;
-                    _nCard.MouseFilter = Control.MouseFilterEnum.Ignore;
-                    Wrapper.AddChild(_nCard);
-
-                    if (HandCardDisplaySettings.TryGetHighlightColor(card, out var color))
-                    {
-                        _highlightOverlay = CreateHighlightOverlay(color);
-                        Wrapper.AddChild(_highlightOverlay);
-                    }
-
-                    Callable.From(() =>
-                    {
-                        if (_nCard == null || !GodotObject.IsInstanceValid(_nCard) || _card == null)
-                            return;
-                        _nCard.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
-                        ApplyMiniTeammateCardDescription(_nCard, _card);
-                        PropagateMouseIgnore(_nCard);
-                    }).CallDeferred();
-                }
-                catch (Exception ex)
-                {
-                    Main.Logger.Error($"Failed to create mini card: {ex.Message}");
-                }
+                _highlightOverlay = null;
             }
 
             private void OnWrapperGuiInput(InputEvent @event)
@@ -439,6 +541,14 @@ namespace STS2ShowPlayerHandCards.Utils
                     CornerRadiusBottomRight = 8,
                 });
                 return overlay;
+            }
+
+            private static void SetOverlayBorderColor(Control overlay, Color color)
+            {
+                if (overlay.GetThemeStylebox("panel") is not StyleBoxFlat style)
+                    return;
+                if (style.BorderColor == color) return;
+                style.BorderColor = color;
             }
 
             private static void PropagateMouseIgnore(Control node)
