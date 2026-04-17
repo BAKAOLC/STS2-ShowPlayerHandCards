@@ -37,5 +37,8 @@
   "template.targets": "Target types (comma separated)",
   "template.effects": "Effects (comma separated)",
   "template.upgraded": "Require upgraded",
-  "template.playable": "Require playable"
+  "template.playable": "Require playable",
+  "runtimeHotkey.toggle.displayName": "Toggle hand card display",
+  "runtimeHotkey.toggle.description": "Shows or hides the teammate hand card overlay.",
+  "runtimeHotkey.category.gameplay": "Gameplay"
 }

@@ -37,5 +37,8 @@
   "template.targets": "目标类型（逗号分隔）",
   "template.effects": "效果词（逗号分隔）",
   "template.upgraded": "要求已升级",
-  "template.playable": "要求可打出"
+  "template.playable": "要求可打出",
+  "runtimeHotkey.toggle.displayName": "切换手牌显示",
+  "runtimeHotkey.toggle.description": "显示或隐藏队友手牌覆盖层。",
+  "runtimeHotkey.category.gameplay": "玩法"
 }

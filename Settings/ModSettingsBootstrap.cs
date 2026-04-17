@@ -3,6 +3,7 @@ using STS2RitsuLib;
 using STS2RitsuLib.Settings;
 using STS2RitsuLib.Utils.Persistence;
 using STS2ShowPlayerHandCards.Data;
+using STS2ShowPlayerHandCards;
 using STS2ShowPlayerHandCards.Data.Models;
 using STS2ShowPlayerHandCards.Utils;
 
@@ -97,9 +98,9 @@ namespace STS2ShowPlayerHandCards.Settings
                             new ToggleKeyBinding(toggleKeyBinding),
                             true,
                             true,
-                            false,
+                            true,
                             ModSettingsLocalization.T("toggleKey.description",
-                                "Records a keyboard shortcut; supports modifier-only bindings (e.g. Shift) and modifier combos."))
+                                "Records a keyboard shortcut; supports modifier-only bindings, modifier combos, and left/right modifier distinction."))
                         .AddSlider(
                             "content_scale",
                             ModSettingsLocalization.T("contentScale.label", "Content Size"),
@@ -503,12 +504,12 @@ namespace STS2ShowPlayerHandCards.Settings
             public void Write(string value)
             {
                 inner.Write(value);
-                InputHandler.CurrentBinding = value;
             }
 
             public void Save()
             {
                 inner.Save();
+                Main.ApplyRuntimeHotkeysFromSettings();
             }
 
             public string CreateDefaultValue()

@@ -1,9 +1,11 @@
 using MegaCrit.Sts2.Core.Modding;
 using STS2RitsuLib;
 using STS2RitsuLib.Patching.Core;
+using STS2RitsuLib.RuntimeInput;
 using STS2ShowPlayerHandCards.Data;
 using STS2ShowPlayerHandCards.Patches;
 using STS2ShowPlayerHandCards.Settings;
+using static STS2ShowPlayerHandCards.Settings.ModSettingsLocalization;
 using STS2ShowPlayerHandCards.Utils;
 using Logger = MegaCrit.Sts2.Core.Logging.Logger;
 using ModSettings = STS2ShowPlayerHandCards.Data.Models.ModSettings;
@@ -14,6 +16,8 @@ namespace STS2ShowPlayerHandCards
     public static class Main
     {
         public static readonly Logger Logger = RitsuLibFramework.CreateLogger(Const.ModId);
+
+        private static IRuntimeHotkeyHandle? _toggleHotkeyHandle;
 
         public static bool IsModActive { get; private set; }
 
@@ -36,9 +40,7 @@ namespace STS2ShowPlayerHandCards
 
                 ModDataStore.Initialize();
                 ModSettingsBootstrap.Initialize();
-                InitializeData();
-                InputHandler.EnsureExists();
-                Logger.Info($"Press '{InputHandler.CurrentBinding}' to toggle hand card display visibility");
+                ApplyRuntimeHotkeysFromSettings();
 
                 IsModActive = true;
                 Logger.Info("Mod initialization complete - Mod is now ACTIVE");
@@ -57,20 +59,53 @@ namespace STS2ShowPlayerHandCards
             patcher.RegisterPatch<CardModelGetDescriptionEnergyVarRollbackPatch>();
         }
 
-        private static void InitializeData()
+        internal static void ApplyRuntimeHotkeysFromSettings()
         {
             var settings = ModDataStore.Get<ModSettings>(ModDataStore.SettingsKey);
-            if (!InputHandler.TryNormalizeBinding(settings.ToggleKey, out var normalizedBinding))
+            var originalBinding = settings.ToggleKey;
+            var normalizedBinding = RuntimeHotkeyService.NormalizeOrDefault(originalBinding, InputHandler.DefaultToggleBinding);
+            if (!string.Equals(originalBinding, normalizedBinding, StringComparison.Ordinal))
             {
-                normalizedBinding = InputHandler.DefaultToggleBinding;
-                ModDataStore.Modify<ModSettings>(ModDataStore.SettingsKey,
-                    s => s.ToggleKey = normalizedBinding);
+                ModDataStore.Modify<ModSettings>(ModDataStore.SettingsKey, s => s.ToggleKey = normalizedBinding);
                 ModDataStore.Save(ModDataStore.SettingsKey);
-                Logger.Warn(
-                    $"Invalid toggle key in settings: '{settings.ToggleKey}', fallback to '{normalizedBinding}'.");
+                Logger.Warn($"Invalid toggle key in settings: '{originalBinding}', fallback to '{normalizedBinding}'.");
             }
 
-            InputHandler.CurrentBinding = normalizedBinding;
+            if (_toggleHotkeyHandle == null)
+            {
+                _toggleHotkeyHandle = RuntimeHotkeyService.Register(normalizedBinding, ToggleHandCardDisplay,
+                    new RuntimeHotkeyOptions
+                    {
+                        Id = "show-player-hand-cards.toggle-hand-display",
+                        DisplayName = T("runtimeHotkey.toggle.displayName", "Toggle hand card display"),
+                        Description = T("runtimeHotkey.toggle.description", "Shows or hides the teammate hand card overlay."),
+                        Purpose = "toggle-overlay",
+                        Category = T("runtimeHotkey.category.gameplay", "Gameplay"),
+                        DebugName = "show-player-hand-cards.toggle",
+                    });
+            }
+            else if (!_toggleHotkeyHandle.TryRebind(normalizedBinding, out _))
+            {
+                _toggleHotkeyHandle.Dispose();
+                _toggleHotkeyHandle = RuntimeHotkeyService.Register(normalizedBinding, ToggleHandCardDisplay,
+                    new RuntimeHotkeyOptions
+                    {
+                        Id = "show-player-hand-cards.toggle-hand-display",
+                        DisplayName = T("runtimeHotkey.toggle.displayName", "Toggle hand card display"),
+                        Description = T("runtimeHotkey.toggle.description", "Shows or hides the teammate hand card overlay."),
+                        Purpose = "toggle-overlay",
+                        Category = T("runtimeHotkey.category.gameplay", "Gameplay"),
+                        DebugName = "show-player-hand-cards.toggle",
+                    });
+            }
+
+            Logger.Info($"Press '{normalizedBinding}' to toggle hand card display visibility");
+        }
+
+        private static void ToggleHandCardDisplay()
+        {
+            HandCardDisplayService.ToggleVisibility();
+            Logger.Info($"Hand card display toggled: {(HandCardDisplayService.IsHidden ? "Hidden" : "Visible")}");
         }
     }
 }
