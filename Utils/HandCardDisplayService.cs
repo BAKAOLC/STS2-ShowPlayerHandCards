@@ -378,12 +378,27 @@ namespace STS2ShowPlayerHandCards.Utils
             public void Cleanup()
             {
                 if (IsReleased) return;
+
+                var selfValid = GodotObject.IsInstanceValid(this);
+                if (!selfValid)
+                {
+                    IsReleased = true;
+                    foreach (var mc in _cards) mc.Dispose();
+                    _cards.Clear();
+                    _spacer = null;
+                    return;
+                }
+
                 IsReleased = true;
                 foreach (var mc in _cards) mc.Dispose();
                 _cards.Clear();
-                _spacer?.QueueFree();
+
+                if (GodotObject.IsInstanceValid(_spacer))
+                    _spacer.QueueFree();
                 _spacer = null;
-                QueueFree();
+
+                if (GodotObject.IsInstanceValid(this))
+                    QueueFree();
             }
         }
 
