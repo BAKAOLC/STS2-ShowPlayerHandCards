@@ -208,6 +208,7 @@ namespace STS2ShowPlayerHandCards.Utils
             private readonly NMultiplayerPlayerState? _playerState;
             private Vector2 _dragStartMouse;
             private Vector2 _dragStartOffset;
+            private Vector2 _dragAutoBasePosition = new(float.NaN, float.NaN);
             private bool _isDragging;
             private bool _isHidden;
             private Control? _spacer;
@@ -289,11 +290,13 @@ namespace STS2ShowPlayerHandCards.Utils
                             _isDragging = true;
                             _dragStartMouse = mouseButton.GlobalPosition;
                             _dragStartOffset = HandCardDisplaySettings.GetSlotOffset(GetSlotIndex());
+                            _dragAutoBasePosition = ResolveAutoBasePosition();
                             GetViewport().SetInputAsHandled();
                         }
                         else if (_isDragging)
                         {
                             _isDragging = false;
+                            _dragAutoBasePosition = new(float.NaN, float.NaN);
                             GetViewport().SetInputAsHandled();
                         }
 
@@ -324,8 +327,19 @@ namespace STS2ShowPlayerHandCards.Utils
                     return GlobalPosition;
 
                 var snapshot = LayoutSettingsSnapshot.Current;
-                var contentSize = new Vector2(snapshot.GetContentWidth(_cards.Count),
-                    snapshot.ScaledCardSize.Y);
+                var basePosition = _isDragging && !float.IsNaN(_dragAutoBasePosition.X)
+                    ? _dragAutoBasePosition
+                    : ResolveAutoBasePosition();
+                return basePosition + snapshot.UserOffset + snapshot.GetSlotOffset(GetSlotIndex());
+            }
+
+            private Vector2 ResolveAutoBasePosition()
+            {
+                if (_playerState == null || _spacer == null)
+                    return GlobalPosition;
+
+                var snapshot = LayoutSettingsSnapshot.Current;
+                var contentSize = new Vector2(snapshot.GetContentWidth(_cards.Count), snapshot.ScaledCardSize.Y);
                 var anchorRect = new Rect2(_spacer.GlobalPosition, _spacer.Size);
                 if (anchorRect.Size == Vector2.Zero)
                 {
@@ -334,9 +348,7 @@ namespace STS2ShowPlayerHandCards.Utils
                 }
 
                 var viewportRect = GetViewport().GetVisibleRect();
-                var basePosition =
-                    HandCardDisplaySettings.ResolveAutoPosition(anchorRect, contentSize, anchorRect, viewportRect);
-                return basePosition + snapshot.UserOffset + snapshot.GetSlotOffset(GetSlotIndex());
+                return HandCardDisplaySettings.ResolveAutoPosition(anchorRect, contentSize, anchorRect, viewportRect);
             }
 
             private int GetSlotIndex()
