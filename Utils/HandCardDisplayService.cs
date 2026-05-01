@@ -74,7 +74,7 @@ namespace STS2ShowPlayerHandCards.Utils
         private static void SubscribeHand(CardPile hand, NMultiplayerPlayerState playerState)
         {
             if (SubscribedHands.ContainsKey(hand)) return;
-            Action handler = () => MarkPlayerDirty(playerState);
+            var handler = () => MarkPlayerDirty(playerState);
             hand.ContentsChanged += handler;
             SubscribedHands[hand] = new(playerState, handler);
         }
@@ -129,8 +129,6 @@ namespace STS2ShowPlayerHandCards.Utils
                 PendingRefresh.Clear();
             }
         }
-
-        private readonly record struct HandSubscription(NMultiplayerPlayerState PlayerState, Action Handler);
 
         private static void ApplyMiniTeammateCardDescription(NCard nCard, CardModel model)
         {
@@ -202,21 +200,23 @@ namespace STS2ShowPlayerHandCards.Utils
             display.RefreshCards(player.PlayerCombatState.Hand.Cards);
         }
 
+        private readonly record struct HandSubscription(NMultiplayerPlayerState PlayerState, Action Handler);
+
         private partial class CardDisplayContainer : HBoxContainer
         {
             private readonly List<MiniCard> _cards = [];
             private readonly NMultiplayerPlayerState? _playerState;
+            private Vector2 _dragAutoBasePosition = new(float.NaN, float.NaN);
             private Vector2 _dragStartMouse;
             private Vector2 _dragStartOffset;
-            private Vector2 _dragAutoBasePosition = new(float.NaN, float.NaN);
             private bool _isDragging;
             private bool _isHidden;
-            private Control? _spacer;
             private Vector2 _lastAnchorPosition = new(float.NaN, float.NaN);
             private Vector2 _lastAnchorSize;
             private int _lastCardCount = -1;
-            private int _lastSnapshotVersion = -1;
             private bool _lastManualPositioningEnabled;
+            private int _lastSnapshotVersion = -1;
+            private Control? _spacer;
 
             public CardDisplayContainer(NMultiplayerPlayerState playerState)
             {
@@ -408,7 +408,7 @@ namespace STS2ShowPlayerHandCards.Utils
             {
                 if (IsReleased) return;
 
-                var selfValid = GodotObject.IsInstanceValid(this);
+                var selfValid = IsInstanceValid(this);
                 if (!selfValid)
                 {
                     IsReleased = true;
@@ -422,11 +422,11 @@ namespace STS2ShowPlayerHandCards.Utils
                 foreach (var mc in _cards) mc.Dispose();
                 _cards.Clear();
 
-                if (GodotObject.IsInstanceValid(_spacer))
+                if (IsInstanceValid(_spacer))
                     _spacer.QueueFree();
                 _spacer = null;
 
-                if (GodotObject.IsInstanceValid(this))
+                if (IsInstanceValid(this))
                     QueueFree();
             }
         }
@@ -609,7 +609,7 @@ namespace STS2ShowPlayerHandCards.Utils
                 try
                 {
                     var tipSet = NHoverTipSet.CreateAndShow(Wrapper, new CardHoverTip(_card), HoverTipAlignment.Right);
-                    tipSet.SetFollowOwner();
+                    tipSet?.SetFollowOwner();
                 }
                 catch (Exception ex)
                 {
