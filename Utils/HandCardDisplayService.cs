@@ -216,6 +216,7 @@ namespace STS2ShowPlayerHandCards.Utils
             private Vector2 _lastAnchorSize;
             private int _lastCardCount = -1;
             private int _lastSnapshotVersion = -1;
+            private bool _lastManualPositioningEnabled;
 
             public CardDisplayContainer(NMultiplayerPlayerState playerState)
             {
@@ -255,7 +256,22 @@ namespace STS2ShowPlayerHandCards.Utils
 
                 var anchorPosition = _spacer.GlobalPosition;
                 var anchorSize = _spacer.Size;
-                var snapshotVersion = LayoutSettingsSnapshot.Current.Version;
+                var snapshot = LayoutSettingsSnapshot.Current;
+                var snapshotVersion = snapshot.Version;
+
+                var manualPositioningToggled = snapshot.ManualPositioningEnabled != _lastManualPositioningEnabled;
+                if (manualPositioningToggled)
+                    GlobalPosition = ResolveDisplayPosition();
+                _lastManualPositioningEnabled = snapshot.ManualPositioningEnabled;
+
+                if (snapshot.ManualPositioningEnabled && !_isDragging)
+                {
+                    _lastAnchorPosition = anchorPosition;
+                    _lastAnchorSize = anchorSize;
+                    _lastCardCount = _cards.Count;
+                    _lastSnapshotVersion = snapshotVersion;
+                    return;
+                }
 
                 if (!_isDragging
                     && anchorPosition == _lastAnchorPosition
@@ -304,6 +320,7 @@ namespace STS2ShowPlayerHandCards.Utils
                     case InputEventMouseMotion mouseMotion when _isDragging:
                         var deltaPosition = mouseMotion.GlobalPosition - _dragStartMouse;
                         HandCardDisplaySettings.SetSlotOffset(GetSlotIndex(), _dragStartOffset + deltaPosition);
+                        GlobalPosition = ResolveDisplayPosition();
                         GetViewport().SetInputAsHandled();
                         break;
                 }
