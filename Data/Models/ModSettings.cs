@@ -39,7 +39,7 @@ namespace STS2ShowPlayerHandCards.Data.Models
 
     public class ModSettings
     {
-        public const int CurrentDataVersion = 3;
+        public const int CurrentDataVersion = 4;
         public const double MinContentScale = 0.5d;
         public const double MaxContentScale = 5.0d;
         public const double MinPositionOffset = -200d;

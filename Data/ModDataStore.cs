@@ -30,6 +30,7 @@ namespace STS2ShowPlayerHandCards.Data
                     [
                         new HighlightRulesV1ToV2Migration(),
                         new LayoutSettingsV2ToV3Migration(),
+                        new LayoutSettingsV3ToV4Migration(),
                     ]);
             }
         }

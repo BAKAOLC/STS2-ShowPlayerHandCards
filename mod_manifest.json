@@ -4,11 +4,15 @@
   "name": "Show Player Hand Cards",
   "author": "OLC",
   "description": "Show teammate hand cards next to the multiplayer player list in real-time, with hover to view full card details",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "has_pck": false,
   "has_dll": true,
   "affects_gameplay": false,
+  "min_game_version": "0.105.0",
   "dependencies": [
-    "STS2-RitsuLib"
+    {
+      "id": "STS2-RitsuLib",
+      "min_version": "0.2.27"
+    }
   ]
 }
