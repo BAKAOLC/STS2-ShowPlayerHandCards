@@ -3,7 +3,6 @@ using STS2RitsuLib;
 using STS2RitsuLib.Settings;
 using STS2RitsuLib.Utils.Persistence;
 using STS2ShowPlayerHandCards.Data;
-using STS2ShowPlayerHandCards;
 using STS2ShowPlayerHandCards.Data.Models;
 using STS2ShowPlayerHandCards.Utils;
 

@@ -89,7 +89,7 @@ namespace STS2ShowPlayerHandCards.Utils
             foreach (var entry in settings.SlotOffsets)
                 slotOffsets[entry.SlotIndex] = new((float)entry.OffsetX, (float)entry.OffsetY);
 
-            return new LayoutSettingsSnapshot(
+            return new(
                 _version,
                 miniCardScale,
                 scaledCardSize,

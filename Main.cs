@@ -5,8 +5,8 @@ using STS2RitsuLib.RuntimeInput;
 using STS2ShowPlayerHandCards.Data;
 using STS2ShowPlayerHandCards.Patches;
 using STS2ShowPlayerHandCards.Settings;
-using static STS2ShowPlayerHandCards.Settings.ModSettingsLocalization;
 using STS2ShowPlayerHandCards.Utils;
+using static STS2ShowPlayerHandCards.Settings.ModSettingsLocalization;
 using Logger = MegaCrit.Sts2.Core.Logging.Logger;
 using ModSettings = STS2ShowPlayerHandCards.Data.Models.ModSettings;
 
@@ -63,7 +63,8 @@ namespace STS2ShowPlayerHandCards
         {
             var settings = ModDataStore.Get<ModSettings>(ModDataStore.SettingsKey);
             var originalBinding = settings.ToggleKey;
-            var normalizedBinding = RuntimeHotkeyService.NormalizeOrDefault(originalBinding, InputHandler.DefaultToggleBinding);
+            var normalizedBinding =
+                RuntimeHotkeyService.NormalizeOrDefault(originalBinding, InputHandler.DefaultToggleBinding);
             if (!string.Equals(originalBinding, normalizedBinding, StringComparison.Ordinal))
             {
                 ModDataStore.Modify<ModSettings>(ModDataStore.SettingsKey, s => s.ToggleKey = normalizedBinding);
@@ -74,11 +75,12 @@ namespace STS2ShowPlayerHandCards
             if (_toggleHotkeyHandle == null)
             {
                 _toggleHotkeyHandle = RuntimeHotkeyService.Register(normalizedBinding, ToggleHandCardDisplay,
-                    new RuntimeHotkeyOptions
+                    new()
                     {
                         Id = "show-player-hand-cards.toggle-hand-display",
                         DisplayName = T("runtimeHotkey.toggle.displayName", "Toggle hand card display"),
-                        Description = T("runtimeHotkey.toggle.description", "Shows or hides the teammate hand card overlay."),
+                        Description = T("runtimeHotkey.toggle.description",
+                            "Shows or hides the teammate hand card overlay."),
                         Purpose = "toggle-overlay",
                         Category = T("runtimeHotkey.category.gameplay", "Gameplay"),
                         DebugName = "show-player-hand-cards.toggle",
@@ -88,11 +90,12 @@ namespace STS2ShowPlayerHandCards
             {
                 _toggleHotkeyHandle.Dispose();
                 _toggleHotkeyHandle = RuntimeHotkeyService.Register(normalizedBinding, ToggleHandCardDisplay,
-                    new RuntimeHotkeyOptions
+                    new()
                     {
                         Id = "show-player-hand-cards.toggle-hand-display",
                         DisplayName = T("runtimeHotkey.toggle.displayName", "Toggle hand card display"),
-                        Description = T("runtimeHotkey.toggle.description", "Shows or hides the teammate hand card overlay."),
+                        Description = T("runtimeHotkey.toggle.description",
+                            "Shows or hides the teammate hand card overlay."),
                         Purpose = "toggle-overlay",
                         Category = T("runtimeHotkey.category.gameplay", "Gameplay"),
                         DebugName = "show-player-hand-cards.toggle",

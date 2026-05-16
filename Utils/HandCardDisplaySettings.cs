@@ -1,7 +1,6 @@
 using System.Text.RegularExpressions;
 using Godot;
 using MegaCrit.Sts2.Core.Models;
-using MegaCrit.Sts2.Core.Nodes.Cards;
 using STS2ShowPlayerHandCards.Data;
 using STS2ShowPlayerHandCards.Data.Models;
 
@@ -104,13 +103,28 @@ namespace STS2ShowPlayerHandCards.Utils
             var bestScore = ScoreCandidate(c0, contentSize, avoidRect, viewportRect);
 
             var score1 = ScoreCandidate(c1, contentSize, avoidRect, viewportRect);
-            if (score1 < bestScore) { best = c1; bestScore = score1; }
+            if (score1 < bestScore)
+            {
+                best = c1;
+                bestScore = score1;
+            }
+
             var score2 = ScoreCandidate(c2, contentSize, avoidRect, viewportRect);
-            if (score2 < bestScore) { best = c2; bestScore = score2; }
+            if (score2 < bestScore)
+            {
+                best = c2;
+                bestScore = score2;
+            }
+
             var score3 = ScoreCandidate(c3, contentSize, avoidRect, viewportRect);
-            if (score3 < bestScore) { best = c3; bestScore = score3; }
+            if (score3 < bestScore)
+            {
+                best = c3;
+                bestScore = score3;
+            }
+
             var score4 = ScoreCandidate(c4, contentSize, avoidRect, viewportRect);
-            if (score4 < bestScore) { best = c4; }
+            if (score4 < bestScore) best = c4;
 
             return best;
         }

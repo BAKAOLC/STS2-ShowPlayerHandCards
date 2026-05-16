@@ -3,6 +3,7 @@ using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
@@ -422,11 +423,11 @@ namespace STS2ShowPlayerHandCards.Utils
                 for (var i = 0; i < cards.Count; i++)
                     if (i < _cards.Count)
                     {
-                        _cards[i].SetCard(cards[i]);
+                        _cards[i].SetCard(cards[i], _playerState?.Player);
                     }
                     else
                     {
-                        var mc = new MiniCard(cards[i], HandleDragInput);
+                        var mc = new MiniCard(cards[i], _playerState?.Player, HandleDragInput);
                         AddChild(mc.Wrapper);
                         _cards.Add(mc);
                     }
@@ -467,8 +468,9 @@ namespace STS2ShowPlayerHandCards.Utils
             private CardModel? _card;
             private Control? _highlightOverlay;
             private NCard? _nCard;
+            private Player? _player;
 
-            public MiniCard(CardModel card, Action<InputEvent>? dragInputHandler)
+            public MiniCard(CardModel card, Player? player, Action<InputEvent>? dragInputHandler)
             {
                 _dragInputHandler = dragInputHandler;
                 Wrapper = new()
@@ -481,7 +483,7 @@ namespace STS2ShowPlayerHandCards.Utils
                 Wrapper.MouseEntered += OnMouseEntered;
                 Wrapper.MouseExited += OnMouseExited;
                 Wrapper.GuiInput += OnWrapperGuiInput;
-                SetCard(card);
+                SetCard(card, player);
             }
 
             public Control Wrapper { get; }
@@ -499,9 +501,10 @@ namespace STS2ShowPlayerHandCards.Utils
                     Wrapper.QueueFree();
             }
 
-            public void SetCard(CardModel card)
+            public void SetCard(CardModel card, Player? player)
             {
                 _card = card;
+                _player = player;
                 var scaledSize = HandCardDisplaySettings.GetScaledCardSize();
                 Wrapper.CustomMinimumSize = scaledSize;
                 Wrapper.Size = scaledSize;
@@ -591,7 +594,31 @@ namespace STS2ShowPlayerHandCards.Utils
 
             private void OnWrapperGuiInput(InputEvent @event)
             {
+                if (TryHandleLemonSpireClick(@event))
+                    return;
+
                 _dragInputHandler?.Invoke(@event);
+            }
+
+            private bool TryHandleLemonSpireClick(InputEvent @event)
+            {
+                if (_player == null || _card == null)
+                    return false;
+
+                if (@event is not InputEventMouseButton
+                    {
+                        Pressed: true,
+                        AltPressed: true,
+                        ButtonIndex: MouseButton.Left or MouseButton.Right,
+                    })
+                    return false;
+
+                var handled = LemonSpireInterop.TrySendHandCardToChat(_player, _card);
+                handled |= LemonSpireInterop.TryRequestHandCardFlash(_player, _card);
+                if (!handled) return false;
+
+                Wrapper.GetViewport()?.SetInputAsHandled();
+                return true;
             }
 
             private static Control CreateHighlightOverlay(Color color)
